@@ -1,0 +1,31 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.so
+
+# --- Entorno Virtual (IMPORTANTE NO SUBIR ESTO) ---
+.venv/
+venv/
+env/
+
+# --- Mac OS Metadata ---
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# --- Archivos de Salida y Pruebas ---
+outputs/*
+!outputs/.gitkeep
+*.mov
+*.mp4
+*.avi
+
+# --- Logs y Temporales ---
+*.log
+t7md_vision.log
+
+# --- Modelos (Opcional) ---
+# Si tus modelos pesan más de 100MB, GitHub los rechazará.
+# Los YOLOv8m suelen pesar ~50MB, así que pueden pasar.
+# Si prefieres que cada quien los descargue, descomenta abajo:
+# models/*.pt
