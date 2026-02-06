@@ -9,6 +9,8 @@ T7MD Vision Pro is a high-performance desktop application designed for AI-assist
 ![PySide6](https://img.shields.io/badge/GUI-PySide6-41CD52?style=for-the-badge)
 ![Status](https://img.shields.io/badge/Status-Production_Ready-success?style=for-the-badge)
 
+![Interfaz T7MD Vision Pro](assets/demo_preview.png)
+
 ## ✨ Key Features
 
 ### 🧠 Advanced AI Engine
