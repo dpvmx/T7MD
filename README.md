@@ -1,4 +1,4 @@
-# T7MD Vision Pro 👁️
+# T7MD 👁️ Motion Detection Software
 
 **Professional Computer Vision & HUD Generation Studio**
 
