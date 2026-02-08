@@ -119,21 +119,34 @@ Located at the very bottom.
 
 ---
 
-## 📂 Project Structure
+## 🔌 Integration with Adobe After Effects (T7MD Bridge)
 
-~~~text
-T7DM/
-├── core/               # Backend Logic (AI & Engine)
-│   ├── video_engine.py     # Rendering Thread
-│   ├── yolo_processor.py   # AI Logic & Model Loading
-│   └── hud_renderer.py     # Graphics Drawing System
-├── gui/                # Frontend (PySide6)
-│   ├── main_window.py      # Main Layout
-│   └── enhanced_preview.py # Video Player
-├── models/             # Local .pt files
-├── outputs/            # Render results saved here
-└── main.py             # Entry point
-~~~
+This tool features a CEP panel for After Effects that allows analyzing video directly from the timeline and automatically generating shape layers (Bounding Boxes).
+
+### 🚀 How It Works
+The architecture uses a "Hybrid Bridge" to communicate Adobe ExtendScript with Python:
+1.  **After Effects (JS):** Detects the selected video (either in the Project Panel or the Active Layer).
+2.  **Launcher (.sh):** An intermediate bash script activates the virtual environment (`.venv`) and prepares the macOS environment variables.
+3.  **Python (Headless):** Runs the AI engine in silent mode (`headless.py`), optimized to **skip video rendering** (generating only JSON data for maximum speed).
+4.  **Importer (JSX):** AE reads the resulting JSON and draws the vector layers frame by frame.
+
+### 🛠️ Panel Installation
+1.  Copy the `T7MD_Panel` folder to:
+    * **Mac:** `~/Library/Application Support/Adobe/CEP/extensions/`
+    * **Win:** `C:\Program Files (x86)\Common Files\Adobe\CEP\extensions\`
+2.  Enable debug mode in terminal:
+    ```bash
+    defaults write com.adobe.CSXS.15 PlayerDebugMode 1
+    ```
+3.  Ensure `launcher.sh` has execution permissions:
+    ```bash
+    chmod +x "/path/to/project/launcher.sh"
+    ```
+
+### ✨ New Features
+* **Smart Selection:** Automatically detects if you selected a Composition, a Folder, or a valid video file.
+* **JSON-Only Mode:** Analysis from AE is 2x faster as it skips MP4 video rendering.
+* **Buffer Overflow Fix:** Robust handling of large data volumes (logs) without freezing the Adobe interface.
 
 ## ⚠️ Troubleshooting
 
