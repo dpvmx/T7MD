@@ -143,6 +143,25 @@ The architecture uses a "Hybrid Bridge" to communicate Adobe ExtendScript with P
     chmod +x "/path/to/project/launcher.sh"
     ```
 
+---
+
+## ⚡️ Performance & Hardware Acceleration
+
+**T7MD** is now optimized for Apple Silicon (M1/M2/M3).
+* **Mac Users:** The engine automatically detects Metal Performance Shaders (MPS). Expect significantly faster inference times (up to 5x faster than CPU).
+* **Windows/Nvidia:** CUDA acceleration remains supported.
+* **Fallback:** CPU mode is available if no GPU is detected.
+
+### ⚠️ Current Limitations (v7.3)
+* **Detection Mode Only:** Currently, the system performs **Object Detection** (drawing bounding boxes per frame) rather than **Object Tracking** (assigning persistent IDs).
+    * *Reason:* Tracking modules (`lap`/`lapx`) are currently disabled on macOS to ensure stability and prevent dependency conflicts.
+    * *Impact:* You will see accurate bounding boxes for faces and persons, but no "ID numbers" are currently exported to the JSON.
+
+### 🛠️ Troubleshooting
+If you encounter memory issues on Mac, the system includes a failsafe to move tensors from GPU to CPU before rendering (`.detach().cpu()`), ensuring no crashes during the drawing phase.
+
+---
+
 ### ✨ New Features
 * **Smart Selection:** Automatically detects if you selected a Composition, a Folder, or a valid video file.
 * **JSON-Only Mode:** Analysis from AE is 2x faster as it skips MP4 video rendering.
