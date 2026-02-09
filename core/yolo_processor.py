@@ -1,5 +1,8 @@
 """
-YOLO Processor T7MD - V7.3 (Stability Mode: MPS Enabled, Tracking Disabled)
+YOLO Processor T7MD - V8.1
+- Fix: Indentation Error
+- Feat: Unified Prompt Logic (Person/Object conflict resolved)
+- Feat: MPS Acceleration Enabled
 """
 
 import cv2
@@ -110,12 +113,11 @@ class YOLOProcessor:
         results = {"faces": [], "persons": [], "objects": []}
         if frame is None: return results
 
-        # 1. Detección de Caras
+        # 1. Detección de Caras (Modelo Independiente)
         if use_faces and self.model_face:
             try:
                 res = self.model_face.predict(frame, device=self.device, verbose=False, conf=0.4)[0]
                 for box in res.boxes:
-                    # FIX MPS: .cpu().numpy()
                     x1, y1, x2, y2 = box.xyxy[0].detach().cpu().numpy().tolist()
                     conf = float(box.conf.item())
                     cx, cy = int((x1+x2)/2), int((y1+y2)/2)
@@ -129,27 +131,34 @@ class YOLOProcessor:
                     })
             except Exception as e: logging.error(f"Error caras: {e}")
 
-        # 2. Detección Personas / Objetos (SIN TRACKING POR AHORA)
+        # 2. Detección Unificada (Personas + Objetos)
         if (use_persons or use_objects) and self.model_yolo:
             try:
-                classes_to_detect = []
-                if use_persons: classes_to_detect.append("person")
-                if use_objects and custom_classes: classes_to_detect.extend(custom_classes)
-                
-                if classes_to_detect:
-                    self.model_yolo.set_classes(classes_to_detect)
+                # Recopilar todos los prompts en una sola lista para evitar conflictos
+                active_prompts = []
+
+                # A. Prompt de Personas (Checkbox)
+                if use_persons:
+                    active_prompts.append("person")
+
+                # B. Prompt de Objetos (Texto Usuario)
+                if use_objects and custom_classes:
+                    cleaned_text = [c.strip().lower() for c in custom_classes if c.strip()]
+                    active_prompts.extend(cleaned_text)
+
+                # C. Eliminar duplicados (Set)
+                final_classes = list(set(active_prompts))
+
+                if final_classes:
+                    self.model_yolo.set_classes(final_classes)
                     
-                    # --- CAMBIO: Usamos .predict() en lugar de .track() ---
-                    # Esto evita el error de la librería 'lap'
-                    res = self.model_yolo.predict(frame, device=self.device, verbose=False, conf=0.3)[0]
+                    # Usamos .predict (Modo Estabilidad sin 'lap')
+                    res = self.model_yolo.predict(frame, device=self.device, verbose=False, conf=0.25)[0]
                     
                     for box in res.boxes:
                         x1, y1, x2, y2 = box.xyxy[0].detach().cpu().numpy().tolist()
                         conf = float(box.conf.item())
                         
-                        # Sin tracking ID por ahora
-                        track_id = None 
-
                         cls_id = int(box.cls.item())
                         label = self.model_yolo.names[cls_id] if (self.model_yolo.names and cls_id in self.model_yolo.names) else "unknown"
                         cx, cy = int((x1+x2)/2), int((y1+y2)/2)
@@ -159,13 +168,19 @@ class YOLOProcessor:
                             "label": label, 
                             "confidence": conf, 
                             "center": (cx, cy),
-                            "track_id": track_id
+                            "track_id": None
                         }
                         
-                        if label == "person": results["persons"].append(item)
-                        else: results["objects"].append(item)
+                        # Clasificación de Salida:
+                        # Si es "person", va a la lista de personas (AZUL).
+                        # Cualquier otra cosa, a objetos (VERDE).
+                        if label == "person":
+                            results["persons"].append(item)
+                        else:
+                            results["objects"].append(item)
+
             except Exception as e: 
-                logging.error(f"Error tracking objetos: {e}")
+                logging.error(f"Error YOLO-World: {e}")
 
         return results
 

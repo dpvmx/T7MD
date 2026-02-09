@@ -1,6 +1,8 @@
 """
-T7MD Vision Pro - Studio Layout V6.6 (Final UI Polish)
-Fix: Campo YOLO fluido (ocupa todo el ancho disponible).
+T7MD Vision Pro - Studio Layout V8.0 (Depth Integration)
+Updates:
+- Integración de Checkbox "Depth" con estilo Cyan.
+- Conexión automática a configuración 'models.use_depth'.
 """
 
 import os
@@ -46,7 +48,7 @@ class MainWindow(QMainWindow):
         self.setup_conns()
     
     def setup_ui(self):
-        self.setWindowTitle("T7MD Vision Pro - Studio")
+        self.setWindowTitle("T7MD Vision Pro - Studio V8.0")
         self.setMinimumSize(1400, 950)
         self.setStyleSheet(MAIN_STYLESHEET)
         
@@ -63,7 +65,7 @@ class MainWindow(QMainWindow):
         self.preview = VideoPreviewWidget(self.config)
         main_l.addWidget(self.preview, 1)
         
-        # 3. AI Toolbar
+        # 3. AI Toolbar (Aquí está el cambio del Depth)
         main_l.addWidget(self.mk_ai_toolbar())
         
         # 4. Dashboard (Sin Scroll)
@@ -141,13 +143,20 @@ class MainWindow(QMainWindow):
         l.addWidget(self._chk("Personas", "models.use_persons"))
         l.addWidget(self._chk("Objetos", "models.use_objects"))
         
+        # --- NUEVO: Checkbox Depth ---
+        # Usamos tu helper _chk pero guardamos la referencia para aplicar estilo
+        chk_depth = self._chk("Depth", "models.use_depth")
+        chk_depth.setStyleSheet("color: #00bcd4; font-weight: bold;") # Cyan Style
+        chk_depth.setToolTip("Generar Mapa de Profundidad (Z-Depth)")
+        l.addWidget(chk_depth)
+        # -----------------------------
+        
         # Campo YOLO Fluido
         l.addWidget(QLabel("| YOLO:"))
         self.txt_yo = QLineEdit()
         self.txt_yo.setPlaceholderText("cell phone, laptop")
         self.txt_yo.setText(",".join(self.config.get("models.custom_classes", [])))
         self.txt_yo.textChanged.connect(self.upd_yolo)
-        # FIX: Eliminado setFixedWidth y añadido stretch factor 1
         l.addWidget(self.txt_yo, 1)
         
         # Padding (Fijo a la derecha)
