@@ -63,7 +63,7 @@ class ModelLoader:
             return None
     
     def _load_with_weights_only_false(self, model_path, model_type):
-        """Cargar modelo con weights_only=False (menos seguro pero necesario)"""
+        """Cargar modelo con weights_only=False (necesario para modelos antiguos en PT 2.6+)"""
         print(f"🔄 Intentando carga con weights_only=False...")
         
         try:
@@ -71,11 +71,11 @@ class ModelLoader:
             import torch
             from ultralytics.nn.tasks import DetectionModel
             
-            # Agregar las clases necesarias a la lista segura
+            # Agregar las clases necesarias a la lista segura (PyTorch 2.6+)
             torch.serialization.add_safe_globals([DetectionModel])
             
             # Cargar con weights_only=False
-            checkpoint = torch.load(model_path, map_location=self.device, weights_only=false)
+            checkpoint = torch.load(model_path, map_location=self.device, weights_only=False)
             
             # Crear modelo y cargar pesos
             if model_type == "world":
@@ -87,7 +87,7 @@ class ModelLoader:
             model.model.load_state_dict(checkpoint, strict=False)
             model.to(self.device)
             
-            print(f"✅ Modelo cargado con weights_only=False")
+            print(f"✅ Modelo cargado exitosamente con weights_only=False")
             return model
             
         except Exception as e:
@@ -126,7 +126,8 @@ class ModelLoader:
     
     def load_world_model(self):
         """Cargar modelo YOLO-World"""
-        model_path = "models/yolov8s-world.pt"
+        # <-- CORRECCIÓN: Unificado a 'm'
+        model_path = "models/yolov8m-world.pt" 
         
         if not os.path.exists(model_path):
             print("⚠️ Modelo YOLO-World no encontrado. Saltando...")
@@ -151,7 +152,8 @@ class ModelLoader:
         if os.path.exists("models/yolov8m-face-lindevs.pt"):
             available.append("face")
         
-        if os.path.exists("models/yolov8s-world.pt"):
+        # <-- CORRECCIÓN: Unificado a 'm'
+        if os.path.exists("models/yolov8m-world.pt"):
             available.append("world")
         
         return available

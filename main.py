@@ -2,6 +2,12 @@ import sys
 import logging
 import os
 import signal
+
+# --- SILENCIAR ADVERTENCIAS DE HUGGING FACE ---
+os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
+os.environ["TRANSFORMERS_VERBOSITY"] = "error"
+# ----------------------------------------------
+
 from PySide6.QtWidgets import QApplication
 from gui.main_window import MainWindow
 
@@ -20,14 +26,18 @@ ASCII_HEADER = r"""
       ▀          ▀            ▀            ▀         ▀         ▀  ▀▀▀▀▀▀▀▀▀▀  
 ________________________________________________________________________________
 |                                                                               |
-|                  MOTION DETECTTION SYSTEM BY TRIPLESIETE                      |
-|                  Version: 0.1                                                 |
+|                  MOTION DETECTTION SYSTEM BY DPVMX                            |
+|                  Version: 8.3.0                                               |
 |                  code by: @dpvmx                                              |
 |_______________________________________________________________________________|                                                                              
 """
 
 def setup_logging():
     """Configura el sistema de logs para que se vea 'Verbose' en la terminal"""
+    # Excluimos los logs de requests y urllib3 que hacen ruido
+    logging.getLogger("urllib3").setLevel(logging.ERROR)
+    logging.getLogger("httpx").setLevel(logging.ERROR)
+    
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] > %(message)s",

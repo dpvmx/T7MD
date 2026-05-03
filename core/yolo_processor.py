@@ -1,8 +1,7 @@
 """
-YOLO Processor T7MD - V8.1
-- Fix: Indentation Error
-- Feat: Unified Prompt Logic (Person/Object conflict resolved)
-- Feat: MPS Acceleration Enabled
+YOLO Processor T7MD - V8.4
+- Feat: Precision latency tracking (ms)
+- Feat: Hardware device reporting for Advanced Stats
 """
 
 import cv2
@@ -11,7 +10,7 @@ from ultralytics import YOLO
 import logging
 import torch
 import os
-import sys
+import time
 from pathlib import Path
 
 # Estructuras de datos 
@@ -30,6 +29,7 @@ class FrameResult:
         self.detections = detections
         self.frame_number = frame_number
         self.frame_rgb = None
+        self.stats_meta = {} # Nueva metadata para el HUD
 
 class YOLOProcessor:
     def __init__(self, config_manager):
@@ -86,23 +86,17 @@ class YOLOProcessor:
             final_path_world = path_world if path_world.exists() else (Path(name_world) if Path(name_world).exists() else None)
 
             if final_path_world:
-                logging.info(f"Cargando YOLO-World: {final_path_world}")
                 self.model_yolo = YOLO(str(final_path_world))
                 self.model_yolo.to(self.device)
-            else:
-                logging.error(f"❌ NO SE ENCONTRÓ {name_world}")
-
+            
             # YOLO-FACE
             name_face = "yolov8m-face-lindevs.pt"
             path_face = self.models_dir / name_face
             final_path_face = path_face if path_face.exists() else (Path(name_face) if Path(name_face).exists() else None)
 
             if final_path_face:
-                logging.info(f"Cargando YOLO-Face: {final_path_face}")
                 self.model_face = YOLO(str(final_path_face))
                 self.model_face.to(self.device)
-            else:
-                logging.error(f"❌ NO SE ENCONTRÓ {name_face}")
                 
         except Exception as e:
             logging.critical(f"Error FATAL cargando modelos: {e}")
@@ -110,10 +104,14 @@ class YOLOProcessor:
             torch.load = _original_torch_load
 
     def detect_frame(self, frame, use_faces, use_persons, use_objects, custom_classes):
-        results = {"faces": [], "persons": [], "objects": []}
+        start_time = time.time()
+        
+        results = {"faces": [], "persons": [], "objects": [], "meta": {}}
         if frame is None: return results
 
-        # 1. Detección de Caras (Modelo Independiente)
+        avg_conf = []
+
+        # 1. Detección de Caras
         if use_faces and self.model_face:
             try:
                 res = self.model_face.predict(frame, device=self.device, verbose=False, conf=0.4)[0]
@@ -121,6 +119,7 @@ class YOLOProcessor:
                     x1, y1, x2, y2 = box.xyxy[0].detach().cpu().numpy().tolist()
                     conf = float(box.conf.item())
                     cx, cy = int((x1+x2)/2), int((y1+y2)/2)
+                    avg_conf.append(conf)
                     
                     results["faces"].append({
                         "bbox": [x1, y1, x2, y2], 
@@ -129,35 +128,28 @@ class YOLOProcessor:
                         "center": (cx, cy),
                         "track_id": None
                     })
-            except Exception as e: logging.error(f"Error caras: {e}")
+            except Exception as e: pass
 
         # 2. Detección Unificada (Personas + Objetos)
+        active_tags = []
         if (use_persons or use_objects) and self.model_yolo:
             try:
-                # Recopilar todos los prompts en una sola lista para evitar conflictos
                 active_prompts = []
-
-                # A. Prompt de Personas (Checkbox)
-                if use_persons:
-                    active_prompts.append("person")
-
-                # B. Prompt de Objetos (Texto Usuario)
+                if use_persons: active_prompts.append("person")
                 if use_objects and custom_classes:
-                    cleaned_text = [c.strip().lower() for c in custom_classes if c.strip()]
-                    active_prompts.extend(cleaned_text)
+                    active_prompts.extend([c.strip().lower() for c in custom_classes if c.strip()])
 
-                # C. Eliminar duplicados (Set)
                 final_classes = list(set(active_prompts))
+                active_tags = final_classes
 
                 if final_classes:
                     self.model_yolo.set_classes(final_classes)
-                    
-                    # Usamos .predict (Modo Estabilidad sin 'lap')
                     res = self.model_yolo.predict(frame, device=self.device, verbose=False, conf=0.25)[0]
                     
                     for box in res.boxes:
                         x1, y1, x2, y2 = box.xyxy[0].detach().cpu().numpy().tolist()
                         conf = float(box.conf.item())
+                        avg_conf.append(conf)
                         
                         cls_id = int(box.cls.item())
                         label = self.model_yolo.names[cls_id] if (self.model_yolo.names and cls_id in self.model_yolo.names) else "unknown"
@@ -171,16 +163,23 @@ class YOLOProcessor:
                             "track_id": None
                         }
                         
-                        # Clasificación de Salida:
-                        # Si es "person", va a la lista de personas (AZUL).
-                        # Cualquier otra cosa, a objetos (VERDE).
                         if label == "person":
                             results["persons"].append(item)
                         else:
                             results["objects"].append(item)
 
-            except Exception as e: 
-                logging.error(f"Error YOLO-World: {e}")
+            except Exception as e: pass
+
+        # Calcular métricas finales
+        latency_ms = (time.time() - start_time) * 1000
+        mean_conf = sum(avg_conf) / len(avg_conf) if avg_conf else 0.0
+        
+        results["meta"] = {
+            "latency": latency_ms,
+            "device": str(self.device).upper(),
+            "avg_conf": mean_conf,
+            "tags": active_tags
+        }
 
         return results
 
@@ -192,7 +191,10 @@ class YOLOProcessor:
             flat.append(Detection(d['bbox'], d['label'], d['confidence'], 'person', d['center'], d['track_id']))
         for d in raw_detections.get("objects", []): 
             flat.append(Detection(d['bbox'], d['label'], d['confidence'], 'object', d['center'], d['track_id']))
-        return FrameResult(frame, flat, frame_number)
+            
+        fr = FrameResult(frame, flat, frame_number)
+        fr.stats_meta = raw_detections.get("meta", {})
+        return fr
 
     def draw_detections(self, frame, raw_detections, frame_number, fps):
         if not self.hud: return frame

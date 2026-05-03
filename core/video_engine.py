@@ -7,7 +7,6 @@ from PySide6.QtCore import QThread, Signal
 from core.yolo_processor import YOLOProcessor
 
 # Intentamos importar el procesador de profundidad
-# Si falla (ej. falta transformers), no romperá la app, solo desactivará la función.
 try:
     from core.depth_processor import DepthProcessor
 except ImportError:
@@ -24,22 +23,14 @@ class VideoEngine(QThread):
         self.running = False
         self.paused = False
         self.video_path = ""
-        
-        # Inicializamos el procesador principal (YOLO)
         self.processor = YOLOProcessor(config_manager)
-        
-        # El procesador de profundidad se carga bajo demanda para ahorrar RAM
         self.depth_processor = None 
 
     def setup_render(self, video_path):
-        """Configura el render antes de iniciar el hilo"""
         self.video_path = video_path
         self.running = True
         self.paused = False
         
-        # --- CARGA PREVIA DE MODELOS ---
-        # Verificamos si podemos cargar el modelo de profundidad ahora
-        # para no tener lag en el primer frame.
         if DepthProcessor:
             if self.depth_processor is None:
                 try:
@@ -49,67 +40,81 @@ class VideoEngine(QThread):
                     print(f"❌ Error iniciando DepthProcessor: {e}")
 
     def run(self):
-        # --- 1. GESTIÓN DE RUTAS Y ARCHIVOS ---
         final_path = self.video_path
-        # Fix común: Decodificar URL si viene arrastrado del navegador de archivos
         if not os.path.exists(final_path):
             decoded_path = urllib.parse.unquote(self.video_path)
             if os.path.exists(decoded_path): final_path = decoded_path
 
         if not os.path.exists(final_path):
-            self.processing_finished.emit({"error": f"Ruta inválida: {final_path}"})
+            self.processing_finished.emit({"error": f"Invalid path: {final_path}"})
             return
 
         self.video_path = final_path
         cap = cv2.VideoCapture(self.video_path)
         
         if not cap.isOpened():
-            self.processing_finished.emit({"error": "No se pudo abrir el archivo de video"})
+            self.processing_finished.emit({"error": "Could not open video file"})
             return
         
-        # --- 2. PROPIEDADES DEL VIDEO ---
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         fps = cap.get(cv2.CAP_PROP_FPS)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         if total_frames == 0: total_frames = 1
 
-        # --- 3. CONFIGURACIÓN DE SALIDA ---
         out_conf = self.config.get("output")
         filename = out_conf.get("custom_filename") or f"T7MD_{int(time.time())}"
         out_dir = out_conf.get("output_dir", "outputs")
-        os.makedirs(out_dir, exist_ok=True)
         
-        save_path_json = os.path.join(out_dir, f"{filename}.json")
-        save_path_video = os.path.join(out_dir, f"{filename}.mp4")
-        save_path_depth = os.path.join(out_dir, f"{filename}_depth.mp4") # Nuevo archivo
+        project_dir = os.path.join(out_dir, filename)
+        os.makedirs(project_dir, exist_ok=True)
         
-        skip_video = out_conf.get("skip_video", False)
+        save_path_json = os.path.join(project_dir, f"{filename}.json")
+        save_path_video = os.path.join(project_dir, f"{filename}.mp4")
+        save_path_depth = os.path.join(project_dir, f"{filename}_depth.mp4")
         
-        # --- 4. ACTIVACIÓN DE PROFUNDIDAD ---
-        # Leemos la configuración real (si no existe, por defecto es False)
+        profile = out_conf.get("profile", "Final Render")
+        is_compositing = (profile == "Compositing Ready")
+        is_json_only = (profile == "JSON Only")
+        save_crops = out_conf.get("save_crops", True)
+
+        # Estructura de subcarpetas profesional para Compositing
+        comp_dirs = {}
+        if is_compositing:
+            bbox_base = os.path.join(project_dir, "BBoxes")
+            hud_base = os.path.join(project_dir, "HUD_Elements")
+            
+            comp_dirs = {
+                "bbox_faces": os.path.join(bbox_base, "seq_faces"),
+                "bbox_persons": os.path.join(bbox_base, "seq_persons"),
+                "bbox_objects": os.path.join(bbox_base, "seq_objects"),
+                "constellation": os.path.join(hud_base, "seq_constellation"),
+                "minimap": os.path.join(hud_base, "seq_minimap"),
+                "stats": os.path.join(hud_base, "seq_stats"),
+                "timecode": os.path.join(hud_base, "seq_timecode"),
+                "custom_msg": os.path.join(hud_base, "seq_custom_msg"),
+                "collage": os.path.join(hud_base, "seq_collage"),
+                "crops_faces": os.path.join(project_dir, "crops_faces")
+            }
+            for d in comp_dirs.values():
+                os.makedirs(d, exist_ok=True)
+        
         use_depth = self.config.get("models.use_depth", False)
 
         writer = None
         writer_depth = None 
 
-        # Codec
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         try:
             if out_conf.get("codec") == "H.265": fourcc = cv2.VideoWriter_fourcc(*'hevc')
         except: pass
 
-        # Inicializar Writers
-        if not skip_video:
-            # Video Principal (Detecciones)
+        if not is_json_only:
             writer = cv2.VideoWriter(save_path_video, fourcc, fps, (width, height))
             
-            # Video Secundario (Profundidad)
-            if use_depth and self.depth_processor:
-                print(f"🌊 Creando archivo de profundidad: {save_path_depth}")
-                writer_depth = cv2.VideoWriter(save_path_depth, fourcc, fps, (width, height))
+        if use_depth and self.depth_processor and not is_json_only:
+            writer_depth = cv2.VideoWriter(save_path_depth, fourcc, fps, (width, height))
 
-        # Estructura JSON
         self.json_data = {
             "metadata": {
                 "source": self.video_path, 
@@ -121,7 +126,6 @@ class VideoEngine(QThread):
             "frames": []
         }
 
-        # Configuración de Modelos YOLO
         use_faces = self.config.get("models.use_faces")
         use_persons = self.config.get("models.use_persons")
         use_objects = self.config.get("models.use_objects")
@@ -129,7 +133,6 @@ class VideoEngine(QThread):
 
         frame_idx = 0
         
-        # --- 5. BUCLE PRINCIPAL ---
         while self.running and cap.isOpened():
             if self.paused:
                 time.sleep(0.1)
@@ -138,21 +141,16 @@ class VideoEngine(QThread):
             ret, frame = cap.read()
             if not ret: break
 
-            # A. DETECCIÓN (YOLO)
             raw_detections = self.processor.detect_frame(
                 frame, use_faces, use_persons, use_objects, custom_classes
             )
 
-            # B. PROFUNDIDAD (DEPTH ANYTHING V2)
-            # Solo procesamos si el writer existe (ahorra recursos si está desactivado)
             if writer_depth is not None:
                 try:
                     depth_frame = self.depth_processor.process_frame(frame)
                     writer_depth.write(depth_frame)
-                except Exception as e:
-                    print(f"Error procesando frame depth: {e}")
+                except Exception: pass
 
-            # C. DATOS JSON
             frame_entry = { "index": frame_idx, "timestamp": frame_idx / fps, "detections": [] }
             
             all_dets = []
@@ -168,49 +166,77 @@ class VideoEngine(QThread):
                     "label": d.get('label', 'unknown'),
                     "type": d['type'],
                     "conf": float(d.get('confidence', 0)),
-                    "track_id": d.get('track_id'), # Será None por ahora (modo estabilidad)
-                    "rect": { 
-                        "w": float(w_box), 
-                        "h": float(h_box), 
-                        "cx": float(x1 + w_box/2), 
-                        "cy": float(y1 + h_box/2) 
-                    }
+                    "track_id": d.get('track_id'),
+                    "rect": { "w": float(w_box), "h": float(h_box), "cx": float(x1 + w_box/2), "cy": float(y1 + h_box/2) }
                 }
                 frame_entry["detections"].append(det_entry)
             
             self.json_data["frames"].append(frame_entry)
 
-            # D. DIBUJAR CAJAS (Video Principal)
-            if writer is not None:
-                processed_frame = self.processor.draw_detections(frame, raw_detections, frame_idx, fps)
-                writer.write(processed_frame)
+            if not is_json_only:
+                if is_compositing and self.processor.hud:
+                    frame_result = self.processor._make_frame_result(frame, raw_detections, frame_idx)
+                    frame_result.frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    video_info = {"fps": fps}
+                    
+                    # 1. Exportación BBox Separada
+                    if self.config.get("modules.bboxes.enabled", True):
+                        img_f = self.processor.hud.render_layer(width, height, frame_result, video_info, "bbox_faces")
+                        cv2.imwrite(os.path.join(comp_dirs["bbox_faces"], f"faces_{frame_idx:05d}.png"), img_f)
+                        
+                        img_p = self.processor.hud.render_layer(width, height, frame_result, video_info, "bbox_persons")
+                        cv2.imwrite(os.path.join(comp_dirs["bbox_persons"], f"persons_{frame_idx:05d}.png"), img_p)
+                        
+                        img_o = self.processor.hud.render_layer(width, height, frame_result, video_info, "bbox_objects")
+                        cv2.imwrite(os.path.join(comp_dirs["bbox_objects"], f"objects_{frame_idx:05d}.png"), img_o)
+                    
+                    # 2. Exportación Constellation
+                    if self.config.get("modules.constellation.enabled", False):
+                        img_c = self.processor.hud.render_layer(width, height, frame_result, video_info, "constellation")
+                        cv2.imwrite(os.path.join(comp_dirs["constellation"], f"const_{frame_idx:05d}.png"), img_c)
+                    
+                    # 3. Exportación HUD Individual
+                    hud_modules = ["minimap", "stats", "timecode", "custom_msg", "collage"]
+                    for mod in hud_modules:
+                        if self.config.get(f"modules.{mod}.enabled", False):
+                            img_h = self.processor.hud.render_layer(width, height, frame_result, video_info, mod)
+                            cv2.imwrite(os.path.join(comp_dirs[mod], f"{mod}_{frame_idx:05d}.png"), img_h)
+                    
+                    # 4. Crops
+                    if save_crops:
+                        for i, face_det in enumerate(raw_detections.get("faces", [])):
+                            fx1, fy1, fx2, fy2 = map(int, face_det["bbox"])
+                            fx1, fy1 = max(0, fx1), max(0, fy1)
+                            fx2, fy2 = min(width, fx2), min(height, fy2)
+                            if fx2 > fx1 and fy2 > fy1:
+                                crop = frame[fy1:fy2, fx1:fx2]
+                                cv2.imwrite(os.path.join(comp_dirs["crops_faces"], f"frame_{frame_idx:05d}_face_{i}.jpg"), crop)
+                                
+                if writer is not None:
+                    processed_frame = self.processor.draw_detections(frame, raw_detections, frame_idx, fps)
+                    writer.write(processed_frame)
 
             frame_idx += 1
-            
-            # Emitir Progreso
             progress = int((frame_idx / total_frames) * 100)
             self.progress_updated.emit(progress, frame_idx, fps)
 
-        # --- 6. LIMPIEZA ---
         cap.release()
         if writer is not None: writer.release()
         if writer_depth is not None: writer_depth.release()
         
-        # Guardar JSON
         try:
             with open(save_path_json, 'w', encoding='utf-8') as f:
                 json.dump(self.json_data, f, indent=2)
             
-            # Resultado final
             result_data = {
-                "output_dir": out_dir, 
-                "video_file": save_path_video, 
+                "output_dir": project_dir, 
                 "json_file": save_path_json
             }
+            if not is_json_only: 
+                result_data["video_file"] = save_path_video
             if writer_depth:
                 result_data["depth_file"] = save_path_depth
                 
             self.processing_finished.emit(result_data)
-            
         except Exception as e:
             self.processing_finished.emit({"error": str(e)})

@@ -1,6 +1,6 @@
 """
 Gestor de configuración JSON para T7MD Vision Pro
-V5.9: Header Stats Custom + Ajustes de Texto.
+V8.3.0: Versión unificada tras auditoría.
 """
 
 import json
@@ -18,7 +18,7 @@ class ConfigManager:
         self.config_file = self.config_dir / "config.json"
         
         self.default_config = {
-            "version": "5.9.0",
+            "version": "8.3.0", # <-- VERSIÓN UNIFICADA
             "models": {
                 "use_faces": True,
                 "use_persons": True,
@@ -43,7 +43,7 @@ class ConfigManager:
                 },
                 "stats": {
                     "enabled": True,
-                    "header_text": "T7MD VISION PRO", # NUEVO
+                    "header_text": "T7MD VISION PRO",
                     "position": "top_left",
                     "scale": 100,
                     "text_color": "#FFFFFF",
@@ -79,7 +79,7 @@ class ConfigManager:
                 },
                 "custom_msg": {
                     "enabled": False,
-                    "text": "TRIPLESIETE\nPRODUCCIONES", # Multilinea default
+                    "text": "TRIPLESIETE\nPRODUCCIONES",
                     "position": "bottom_center",
                     "scale": 100,
                     "text_color": "#FFFFFF",

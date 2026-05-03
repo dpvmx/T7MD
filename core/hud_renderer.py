@@ -1,6 +1,8 @@
 """
-Renderizador de HUD Profesional T7MD v6.1 (Debug Active)
-Fix: Dibuja BBoxes correctamente usando lista plana de objetos.
+Renderizador de HUD Profesional T7MD v8.4
+Feat: Advanced Techy Stats with conditional latency alerts.
+Feat: Constellation overlay module (Mesh, Sequential, Hub).
+Feat: Bezier Curve mathematical implementation for Constellation links.
 """
 
 import cv2
@@ -9,6 +11,7 @@ from PIL import Image, ImageDraw, ImageFont
 from pathlib import Path
 import platform
 import logging
+import math
 
 class HUDRenderer:
     def __init__(self, config_manager):
@@ -54,12 +57,9 @@ class HUDRenderer:
         except: return (255, 255, 255)
 
     def _draw_bboxes(self, draw, h_screen, detections):
-        """Dibuja las cajas delimitadoras (BBoxes)"""
         try:
             cfg = self.config.get("modules.bboxes", {})
             if not cfg.get("enabled", True): return
-            
-            # Si no hay detecciones, salir
             if not detections: return
 
             for det in detections:
@@ -67,7 +67,6 @@ class HUDRenderer:
                 color = "#FFFFFF"
                 thickness = 2
                 
-                # Seleccion de estilo
                 if "face" in t: 
                     color = cfg.get("face_color", "#00FFFF")
                     thickness = int(cfg.get("face_thick", 2))
@@ -80,17 +79,14 @@ class HUDRenderer:
                 
                 c_rgb = self._hex_to_rgb(color)
                 
-                # Caja
                 draw.rectangle(det.bbox, outline=c_rgb + (255,), width=thickness)
                 
-                # Crosshair
                 if cfg.get("show_crosshair", True):
                     cx, cy = det.center
                     ch = 10
                     draw.line([(cx - ch, cy), (cx + ch, cy)], fill=c_rgb + (200,), width=thickness)
                     draw.line([(cx, cy - ch), (cx, cy + ch)], fill=c_rgb + (200,), width=thickness)
                 
-                # Etiqueta
                 label = f"{det.label} {det.confidence:.2f}"
                 base_sz = 12
                 font_size = self._get_responsive_size(base_sz, h_screen, cfg.get("label_scale", 100))
@@ -98,31 +94,126 @@ class HUDRenderer:
                 
                 lb = draw.textbbox((det.bbox[0], det.bbox[1]), label, font=font)
                 draw.rectangle([(det.bbox[0], lb[1]), (lb[2]+4, lb[3])], fill=c_rgb + (255,))
-                
                 txt_col = cfg.get("label_text_color", "#000000")
                 draw.text((det.bbox[0]+2, lb[1]), label, fill=txt_col, font=font)
                 
         except Exception as e:
-            # ESTE LOG SALDRA EN TU TERMINAL SI ALGO FALLA AQUI
             logging.error(f"[HUD BBOX ERROR] {e}")
 
-    # --- RESTO DE MODULOS (Sin cambios logicos, solo mantenidos) ---
-    def draw_stats_panel(self, draw, w_screen, h_screen, stats):
+    # --- MATEMATICAS DE CURVA DE BEZIER ---
+    def _draw_curved_line(self, draw, pt1, pt2, color, thickness):
+        dx = pt2[0] - pt1[0]
+        dy = pt2[1] - pt1[1]
+        dist = math.hypot(dx, dy)
+        if dist == 0: return
+        
+        # 1. Encontrar el punto medio exacto
+        mx = (pt1[0] + pt2[0]) / 2.0
+        my = (pt1[1] + pt2[1]) / 2.0
+        
+        # 2. Calcular vector perpendicular (Normal)
+        nx = -dy / dist
+        ny = dx / dist
+        
+        # 3. Empujar el punto medio 25% de la distancia total para crear la "pancita"
+        offset = dist * 0.25 
+        cp = (mx + nx * offset, my + ny * offset)
+        
+        # 4. Interpolación Bézier
+        steps = max(10, int(dist / 10)) # Resolución dinámica basada en distancia
+        pts = []
+        for i in range(steps + 1):
+            t = i / steps
+            inv_t = 1.0 - t
+            # Fórmula Bézier Cuadrática
+            x = (inv_t**2)*pt1[0] + 2*inv_t*t*cp[0] + (t**2)*pt2[0]
+            y = (inv_t**2)*pt1[1] + 2*inv_t*t*cp[1] + (t**2)*pt2[1]
+            pts.append((int(x), int(y)))
+            
+        # 5. Dibujar curva conectando los micro-segmentos rectos
+        for i in range(len(pts)-1):
+            draw.line([pts[i], pts[i+1]], fill=color, width=thickness)
+
+    # --- MODULO: CONSTELACION ---
+    def draw_constellation(self, draw, w_screen, h_screen, detections):
+        cfg = self.config.get("modules.constellation", {})
+        if not cfg.get("enabled", False): return
+        
+        target_types = cfg.get("targets", ["face", "person", "object"])
+        valid_points = [d.center for d in detections if str(d.type).lower() in target_types]
+        
+        if len(valid_points) < 2: return
+        
+        style = cfg.get("style", "mesh")
+        line_shape = cfg.get("line_shape", "straight")
+        c_rgb = self._hex_to_rgb(cfg.get("color", "#BCFF4E"))
+        thickness = int(cfg.get("thick", 1))
+        alpha = int(cfg.get("opacity", 80) * 2.55)
+        color_rgba = c_rgb + (alpha,)
+
+        # Función enrutadora (Recto vs Curvo)
+        def draw_link(p1, p2):
+            if line_shape == "curved":
+                self._draw_curved_line(draw, p1, p2, color_rgba, thickness)
+            else:
+                draw.line([p1, p2], fill=color_rgba, width=thickness)
+
+        if style == "hub":
+            center_x, center_y = w_screen // 2, h_screen // 2
+            for pt in valid_points:
+                draw_link(pt, (center_x, center_y))
+                
+        elif style == "sequential":
+            sorted_pts = sorted(valid_points, key=lambda p: p[0])
+            for i in range(len(sorted_pts) - 1):
+                draw_link(sorted_pts[i], sorted_pts[i+1])
+                
+        elif style == "mesh":
+            max_pts = min(len(valid_points), 30)
+            for i in range(max_pts):
+                for j in range(i + 1, max_pts):
+                    d = math.hypot(valid_points[i][0] - valid_points[j][0], valid_points[i][1] - valid_points[j][1])
+                    if d < w_screen * 0.4: 
+                        draw_link(valid_points[i], valid_points[j])
+
+    # --- STATS AVANZADOS ---
+    def draw_stats_panel(self, draw, w_screen, h_screen, stats, meta):
         try:
             cfg = self.config.get("modules.stats", {})
             if not cfg.get("enabled", True): return
             font_size = self._get_responsive_size(14, h_screen, cfg.get("scale", 100))
             font = self._get_font(font_size); f_size = getattr(font, 'size', 12) 
-            header = cfg.get("header_text", "T7MD VISION PRO")
-            lines = [header, f"FPS: {stats.get('fps', 0):.1f}", f"F: {stats.get('faces', 0)} | P: {stats.get('persons', 0)} | O: {stats.get('objects', 0)}"]
+            
+            header = cfg.get("header_text", "aiMODES SYS")
+            latency = meta.get("latency", 0.0)
+            device = meta.get("device", "CPU")
+            avg_conf = meta.get("avg_conf", 0.0) * 100
+            active_tags = ", ".join(meta.get("tags", [])) if meta.get("tags") else "N/A"
+            
+            lines = [
+                header, 
+                f"FPS: {stats.get('fps', 0):.1f} | DPU: {device}", 
+                f"LATENCY: {latency:.1f}ms",
+                f"CONF_AVG: {avg_conf:.1f}%",
+                f"F:{stats.get('faces', 0)} P:{stats.get('persons', 0)} O:{stats.get('objects', 0)}",
+                f"TAGS: {active_tags}"
+            ]
+            
             line_height = f_size + 6; max_w = 0
             for l in lines: bb = draw.textbbox((0,0), l, font=font); max_w = max(max_w, bb[2]-bb[0])
             panel_h = len(lines) * line_height; panel_w = max_w + 20
             x, y = self._get_anchor_pos(w_screen, h_screen, panel_w, panel_h, cfg.get("position", "top_left"))
+            
             bg_rgb = self._hex_to_rgb(cfg.get("bg_color", "#000000")); bg_alpha = int(cfg.get("bg_opacity", 80) * 2.55)
             if bg_alpha > 0: draw.rectangle([(x, y), (x+panel_w, y+panel_h)], fill=bg_rgb + (bg_alpha,))
+            
             text_y = y + 5; text_x = x + 10; text_col = cfg.get("text_color", "#FFFFFF")
-            for i, line in enumerate(lines): draw.text((text_x, text_y), line, font=font, fill=text_col); text_y += line_height
+            
+            for i, line in enumerate(lines): 
+                current_col = text_col
+                if "LATENCY" in line and latency > 100.0:
+                    current_col = "#FF4444" 
+                draw.text((text_x, text_y), line, font=font, fill=current_col); text_y += line_height
         except Exception: pass
 
     def draw_minimap(self, draw, w_screen, h_screen, detections):
@@ -234,8 +325,9 @@ class HUDRenderer:
                 "objects": len([d for d in frame_result.detections if "object" in str(d.type).lower()])
             }
 
+            self.draw_constellation(draw, w, h, frame_result.detections)
             self._draw_bboxes(draw, h, frame_result.detections)
-            self.draw_stats_panel(draw, w, h, stats)
+            self.draw_stats_panel(draw, w, h, stats, getattr(frame_result, 'stats_meta', {}))
             self.draw_timecode(draw, w, h, frame_result.frame_number, video_info.get("fps", 30))
             self.draw_minimap(draw, w, h, frame_result.detections)
             self.draw_custom_message(draw, w, h)
@@ -251,10 +343,11 @@ class HUDRenderer:
 
     def render_layer(self, w, h, frame_result, video_info, layer_type="all"):
         base_image = None
-        if layer_type in ["hud", "all"] and hasattr(frame_result, 'frame_rgb'):
+        if layer_type in ["hud", "all", "collage"] and hasattr(frame_result, 'frame_rgb'):
              base_image = Image.fromarray(frame_result.frame_rgb).convert("RGBA")
         overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
         draw = ImageDraw.Draw(overlay)
+        
         stats = {
             "frame": frame_result.frame_number,
             "fps": video_info.get("fps", 0),
@@ -262,15 +355,29 @@ class HUDRenderer:
             "persons": len([d for d in frame_result.detections if "person" in str(d.type).lower()]),
             "objects": len([d for d in frame_result.detections if "object" in str(d.type).lower()])
         }
-        if layer_type == "bbox":
-            self._draw_bboxes(draw, h, frame_result.detections)
-        elif layer_type == "hud":
-            self.draw_stats_panel(draw, w, h, stats)
-            self.draw_timecode(draw, w, h, frame_result.frame_number, video_info.get("fps", 30))
+        
+        if layer_type == "bbox_faces":
+            dets = [d for d in frame_result.detections if "face" in str(d.type).lower()]
+            self._draw_bboxes(draw, h, dets)
+        elif layer_type == "bbox_persons":
+            dets = [d for d in frame_result.detections if "person" in str(d.type).lower()]
+            self._draw_bboxes(draw, h, dets)
+        elif layer_type == "bbox_objects":
+            dets = [d for d in frame_result.detections if "object" in str(d.type).lower()]
+            self._draw_bboxes(draw, h, dets)
+        elif layer_type == "constellation":
+            self.draw_constellation(draw, w, h, frame_result.detections)
+            
+        elif layer_type == "minimap":
             self.draw_minimap(draw, w, h, frame_result.detections)
+        elif layer_type == "stats":
+            self.draw_stats_panel(draw, w, h, stats, getattr(frame_result, 'stats_meta', {}))
+        elif layer_type == "timecode":
+            self.draw_timecode(draw, w, h, frame_result.frame_number, video_info.get("fps", 30))
+        elif layer_type == "custom_msg":
             self.draw_custom_message(draw, w, h)
-            if base_image:
-                self.draw_collage(overlay, draw, w, h, frame_result.detections, base_image)
+        elif layer_type == "collage" and base_image:
+            self.draw_collage(overlay, draw, w, h, frame_result.detections, base_image)
+            
+        # CORRECCIÓN DE BUG: COLOR_RGBA2BGRA
         return cv2.cvtColor(np.array(overlay), cv2.COLOR_RGBA2BGRA)
-
-    def render_collage_layer(self, rgb, w, h, res): return np.zeros((h,w,4), dtype=np.uint8)

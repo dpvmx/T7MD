@@ -1,24 +1,26 @@
 """
-T7MD Vision Pro - Studio Layout V8.0 (Depth Integration)
+aiMODES - Artificial Intelligence Motion Detection System
+Architecture: Native Splitter UI with Inspector Panel
 Updates:
-- Integración de Checkbox "Depth" con estilo Cyan.
-- Conexión automática a configuración 'models.use_depth'.
+- Feat: Added Line Shape selection (Straight / Bezier Curve) to Constellation Link.
 """
 
 import os
+import sys
+import subprocess
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QPushButton, QLabel, QComboBox, QSlider, QCheckBox,
     QGroupBox, QStatusBar, QFileDialog, QMessageBox, QLineEdit, 
-    QFrame, QColorDialog, QScrollArea, QSizePolicy, QPlainTextEdit
+    QFrame, QColorDialog, QScrollArea, QSizePolicy, QPlainTextEdit,
+    QSplitter, QTabWidget
 )
-from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QColor, QCloseEvent, QPixmap, QImageReader
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QCloseEvent, QFont
 
 from gui.enhanced_preview import EnhancedVideoPreview as VideoPreviewWidget
 from core.config_manager import ConfigManager
 from core.video_engine import VideoEngine
-from gui.styles import MAIN_STYLESHEET, ACCENT_COLOR
 
 class ColorBtn(QPushButton):
     def __init__(self, hex_col, cb):
@@ -30,14 +32,15 @@ class ColorBtn(QPushButton):
         self.clicked.connect(self.pick)
     
     def upd(self):
-        self.setStyleSheet(f"background-color: {self.hex}; border: 1px solid #555;")
+        self.setStyleSheet(f"background-color: {self.hex}; border: 1px solid palette(mid); border-radius: 4px;")
     
     def pick(self):
-        c = QColorDialog.getColor(QColor(self.hex), self, "Color")
+        c = QColorDialog.getColor(QColor(self.hex), self, "Select Color")
         if c.isValid():
             self.hex = c.name()
             self.upd()
             self.cb(self.hex)
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -48,288 +51,594 @@ class MainWindow(QMainWindow):
         self.setup_conns()
     
     def setup_ui(self):
-        self.setWindowTitle("T7MD Vision Pro - Studio V8.0")
-        self.setMinimumSize(1400, 950)
-        self.setStyleSheet(MAIN_STYLESHEET)
+        self.setWindowTitle("aiMODES - v8.4.0")
+        self.setMinimumSize(1280, 800)
         
         central = QWidget()
         self.setCentralWidget(central)
-        main_l = QVBoxLayout(central)
-        main_l.setSpacing(0)
-        main_l.setContentsMargins(0,0,0,0)
+        main_layout = QVBoxLayout(central)
+        main_layout.setSpacing(10)
+        main_layout.setContentsMargins(10, 10, 10, 10)
         
-        # 1. Header (64px Compacto)
-        main_l.addWidget(self.mk_header())
+        header = self.mk_header()
+        main_layout.addWidget(header, 0) 
         
-        # 2. Preview
+        self.splitter = QSplitter(Qt.Horizontal)
+        
+        video_container = QWidget()
+        video_layout = QVBoxLayout(video_container)
+        video_layout.setContentsMargins(0, 0, 0, 0)
         self.preview = VideoPreviewWidget(self.config)
-        main_l.addWidget(self.preview, 1)
+        video_layout.addWidget(self.preview)
         
-        # 3. AI Toolbar (Aquí está el cambio del Depth)
-        main_l.addWidget(self.mk_ai_toolbar())
+        self.splitter.addWidget(video_container)
         
-        # 4. Dashboard (Sin Scroll)
-        self.dash = QWidget()
-        self.dash.setStyleSheet("background-color: #151515;")
-        self.dash_l = QHBoxLayout(self.dash)
-        self.dash_l.setSpacing(5)
-        self.dash_l.setContentsMargins(10, 5, 10, 5)
+        self.tabs = QTabWidget()
+        self.tabs.setMinimumWidth(380)
+        self.tabs.setMaximumWidth(450)
         
-        self.mk_col_bboxes()    
-        self.mk_col_stats()     
-        self.mk_col_minimap()   
-        self.mk_col_collage()   
-        self.mk_col_timecode()  
-        self.mk_col_msg()       
+        self.tabs.addTab(self.mk_tab_ai_models(), "AI Models")
+        self.tabs.addTab(self.mk_tab_hud_settings(), "HUD Settings")
+        self.tabs.addTab(self.mk_tab_export(), "Export")
         
-        main_l.addWidget(self.dash)
+        self.splitter.addWidget(self.tabs)
         
-        # 5. Output
-        main_l.addWidget(self.mk_output_bar())
+        self.splitter.setStretchFactor(0, 1)
+        self.splitter.setStretchFactor(1, 0)
         
-        # Status Bar Negra
+        main_layout.addWidget(self.splitter, 1) 
+        
         self.sb = QStatusBar()
-        self.sb.setStyleSheet("background-color: #000; color: #666; border-top: 1px solid #222;")
         self.setStatusBar(self.sb)
+        self.sb.showMessage("Ready")
 
     def mk_header(self):
-        fr = QFrame()
-        fr.setStyleSheet("background-color: #000; border-bottom: 1px solid #333;")
-        fr.setFixedHeight(64)
-        l = QHBoxLayout(fr)
-        l.setContentsMargins(20, 0, 20, 0)
+        header_widget = QWidget()
+        header_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         
-        logo_lbl = QLabel()
-        logo_path = "logo/logo.png"
-        if os.path.exists(logo_path):
-            try:
-                reader = QImageReader(logo_path)
-                if reader.canRead():
-                    pix = QPixmap.fromImage(reader.read()).scaledToHeight(40, Qt.SmoothTransformation)
-                    logo_lbl.setPixmap(pix)
-                else:
-                    logo_lbl.setText("IMG ERR")
-            except:
-                logo_lbl.setText("LOGO ERR")
-        else:
-            logo_lbl.setText("T7MD VISION")
-            logo_lbl.setStyleSheet(f"color: {ACCENT_COLOR}; font-weight: bold; font-size: 24px;")
-        l.addWidget(logo_lbl)
+        layout = QHBoxLayout(header_widget)
+        layout.setContentsMargins(5, 5, 5, 5)
         
-        l.addStretch()
+        title_layout = QVBoxLayout()
+        title_layout.setSpacing(0)
         
-        btn = QPushButton("Abrir Video")
-        btn.setFixedSize(100, 30)
-        btn.setStyleSheet("border: 1px solid #444; color: #ccc; font-size: 12px;")
-        btn.clicked.connect(self.load_video)
-        l.addWidget(btn)
+        lbl_title = QLabel("aiMODES")
+        font_title = QFont()
+        font_title.setPointSize(24)
+        font_title.setBold(True)
+        lbl_title.setFont(font_title)
         
-        self.lbl_vid_name = QLabel("Sin Archivo")
-        self.lbl_vid_name.setStyleSheet(f"color: {ACCENT_COLOR}; font-weight: bold; margin-left: 15px; font-size: 12px;")
-        l.addWidget(self.lbl_vid_name)
-        return fr
+        lbl_subtitle = QLabel("Artificial Intelligence Motion Detection System")
+        font_sub = QFont()
+        font_sub.setPointSize(11)
+        lbl_subtitle.setFont(font_sub)
+        lbl_subtitle.setStyleSheet("color: palette(dark);") 
+        
+        title_layout.addWidget(lbl_title)
+        title_layout.addWidget(lbl_subtitle)
+        
+        layout.addLayout(title_layout)
+        layout.addStretch()
+        
+        self.lbl_vid_name = QLabel("No File Loaded")
+        self.lbl_vid_name.setStyleSheet("color: palette(dark);")
+        
+        btn_open = QPushButton("Open Video")
+        btn_open.setMinimumWidth(120)
+        btn_open.clicked.connect(self.load_video)
+        
+        layout.addWidget(self.lbl_vid_name)
+        layout.addSpacing(15)
+        layout.addWidget(btn_open)
+        
+        return header_widget
 
-    def mk_ai_toolbar(self):
-        fr = QFrame()
-        fr.setStyleSheet("background-color: #222; border-bottom: 1px solid #333;")
-        fr.setFixedHeight(50)
-        l = QHBoxLayout(fr)
-        l.setContentsMargins(15, 5, 15, 5)
-        l.setSpacing(20)
+    def mk_tab_ai_models(self):
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
         
-        # Checkboxes
-        l.addWidget(QLabel(f"<b style='color:{ACCENT_COLOR}'>INTELIGENCIA ARTIFICIAL:</b>"))
-        l.addWidget(self._chk("Caras", "models.use_faces"))
-        l.addWidget(self._chk("Personas", "models.use_persons"))
-        l.addWidget(self._chk("Objetos", "models.use_objects"))
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setSpacing(15)
         
-        # --- NUEVO: Checkbox Depth ---
-        # Usamos tu helper _chk pero guardamos la referencia para aplicar estilo
-        chk_depth = self._chk("Depth", "models.use_depth")
-        chk_depth.setStyleSheet("color: #00bcd4; font-weight: bold;") # Cyan Style
-        chk_depth.setToolTip("Generar Mapa de Profundidad (Z-Depth)")
-        l.addWidget(chk_depth)
-        # -----------------------------
+        grp_detect = QGroupBox("Target Detection")
+        lay_detect = QVBoxLayout(grp_detect)
         
-        # Campo YOLO Fluido
-        l.addWidget(QLabel("| YOLO:"))
+        lay_detect.addWidget(self._chk("Detect Faces", "models.use_faces"))
+        lay_detect.addWidget(self._chk("Detect Persons", "models.use_persons"))
+        lay_detect.addWidget(self._chk("Detect Objects", "models.use_objects"))
+        
+        lbl_yolo = QLabel("Custom YOLO Targets (comma separated):")
+        lbl_yolo.setStyleSheet("color: palette(dark); margin-top: 10px;")
+        
         self.txt_yo = QLineEdit()
-        self.txt_yo.setPlaceholderText("cell phone, laptop")
+        self.txt_yo.setPlaceholderText("e.g. cell phone, laptop, backpack")
         self.txt_yo.setText(",".join(self.config.get("models.custom_classes", [])))
         self.txt_yo.textChanged.connect(self.upd_yolo)
-        l.addWidget(self.txt_yo, 1)
         
-        # Padding (Fijo a la derecha)
-        l.addWidget(QLabel("Padding Global:"))
-        pad_sl = self._slider(0, 200, self.config.get("style.global_margin"), lambda v: self.upd("style.global_margin", v), "px")
-        pad_sl.setFixedWidth(150)
-        l.addWidget(pad_sl)
+        self.lbl_yolo_tags = QLabel()
+        self.lbl_yolo_tags.setStyleSheet("color: palette(dark); font-size: 11px;")
+        self.upd_yolo(self.txt_yo.text())
         
-        return fr
+        lay_detect.addWidget(lbl_yolo)
+        lay_detect.addWidget(self.txt_yo)
+        lay_detect.addWidget(self.lbl_yolo_tags)
+        
+        layout.addWidget(grp_detect)
+        
+        grp_fx = QGroupBox("Cinematic Analysis")
+        lay_fx = QVBoxLayout(grp_fx)
+        
+        chk_depth = self._chk("Generate Z-Depth Pass", "models.use_depth")
+        lay_fx.addWidget(chk_depth)
+        
+        self.lbl_depth_warn = QLabel("Warning: Depth generation increases render time (~2x)")
+        self.lbl_depth_warn.setStyleSheet("color: palette(dark); font-size: 11px;")
+        self.lbl_depth_warn.setVisible(self.config.get("models.use_depth", False))
+        
+        def toggle_depth_warn(v):
+            self.lbl_depth_warn.setVisible(v)
+            self.upd("models.use_depth", v)
+            
+        chk_depth.toggled.disconnect()
+        chk_depth.toggled.connect(toggle_depth_warn)
+        lay_fx.addWidget(self.lbl_depth_warn)
+        
+        layout.addWidget(grp_fx)
+        layout.addStretch()
+        
+        scroll.setWidget(content)
+        return scroll
 
-    def mk_output_bar(self):
-        fr = QFrame()
-        fr.setStyleSheet("background-color: #1a1a1a; border-top: 1px solid #333;")
-        fr.setFixedHeight(70)
-        l = QHBoxLayout(fr)
-        l.setContentsMargins(20, 10, 20, 10)
-        l.setSpacing(15)
-        l.addWidget(QLabel("PERFIL:"))
-        self.cmb_prof = QComboBox(); self.cmb_prof.addItems(["Final Render", "Compositing", "JSON Only"])
-        l.addWidget(self.cmb_prof)
-        l.addWidget(QLabel("CODEC:"))
-        self.cmb_cod = QComboBox(); self.cmb_cod.addItems(["H.264", "H.265"])
-        l.addWidget(self.cmb_cod)
-        l.addWidget(QLabel("NOMBRE:"))
-        self.txt_name = QLineEdit(); self.txt_name.setPlaceholderText("Auto")
-        l.addWidget(self.txt_name, 1)
-        self.btn_dest = QPushButton("Destino..."); self.btn_dest.clicked.connect(self.sel_out)
-        l.addWidget(self.btn_dest)
+    def mk_tab_hud_settings(self):
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
         
-        self.btn_render = QPushButton("▶ RENDERIZAR")
-        self.btn_render.setFixedSize(160, 40)
-        self.btn_render.setStyleSheet(f"""
-            QPushButton {{ 
-                background-color: {ACCENT_COLOR}; 
-                color: #000000; 
-                font-weight: bold; 
-                border-radius: 4px; 
-                border: none;
-                font-size: 13px;
-            }}
-            QPushButton:hover {{ background-color: #ccff66; }}
-            QPushButton:pressed {{ background-color: #aaff44; }}
-        """)
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setSpacing(15)
+        
+        grp_global = QGroupBox("Global Layout")
+        lay_global = QVBoxLayout(grp_global)
+        lbl_pad = QLabel("Screen Padding:")
+        lbl_pad.setStyleSheet("color: palette(dark);")
+        lay_global.addWidget(lbl_pad)
+        lay_global.addWidget(self._slider(0, 200, self.config.get("style.global_margin"), lambda v: self.upd("style.global_margin", v), "px"))
+        layout.addWidget(grp_global)
+
+        layout.addWidget(self.mk_group_constellation())
+        layout.addWidget(self.mk_group_bboxes())
+        layout.addWidget(self.mk_group_stats())
+        layout.addWidget(self.mk_group_minimap())
+        layout.addWidget(self.mk_group_collage())
+        layout.addWidget(self.mk_group_timecode())
+        layout.addWidget(self.mk_group_msg())
+        
+        layout.addStretch()
+        scroll.setWidget(content)
+        return scroll
+
+    def mk_group_constellation(self):
+        group = QGroupBox("Constellation Link")
+        layout = QGridLayout(group)
+        k = "modules.constellation"
+        
+        layout.addWidget(self._chk("Enable Module", f"{k}.enabled"), 0, 0, 1, 2)
+        
+        layout.addWidget(self._lbl("Link Style"), 1, 0)
+        combo_style = QComboBox()
+        for t, d in [("Mesh (Proximity)", "mesh"), ("Sequential (X-Axis)", "sequential"), ("Hub (Center Fix)", "hub")]:
+            combo_style.addItem(t, d)
+        idx_style = combo_style.findData(self.config.get(f"{k}.style", "mesh"))
+        if idx_style >= 0: combo_style.setCurrentIndex(idx_style)
+        combo_style.currentIndexChanged.connect(lambda idx, cb=combo_style: self.upd(f"{k}.style", cb.itemData(idx)))
+        layout.addWidget(combo_style, 1, 1)
+
+        layout.addWidget(self._lbl("Targets"), 2, 0)
+        combo_tgt = QComboBox()
+        for t, d in [("All Detected", ["face", "person", "object"]), ("Faces Only", ["face"]), ("Persons Only", ["person"]), ("Objects Only", ["object"])]:
+            combo_tgt.addItem(t, d)
+        
+        current_tgt = self.config.get(f"{k}.targets", ["face", "person", "object"])
+        for i in range(combo_tgt.count()):
+            if combo_tgt.itemData(i) == current_tgt:
+                combo_tgt.setCurrentIndex(i)
+                break
+        
+        combo_tgt.currentIndexChanged.connect(lambda idx, cb=combo_tgt: self.upd(f"{k}.targets", cb.itemData(idx)))
+        layout.addWidget(combo_tgt, 2, 1)
+
+        # NUEVO: Line Shape (Straight vs Bezier)
+        layout.addWidget(self._lbl("Line Shape"), 3, 0)
+        combo_shape = QComboBox()
+        for t, d in [("Straight Line", "straight"), ("Bezier Curve", "curved")]:
+            combo_shape.addItem(t, d)
+        idx_shape = combo_shape.findData(self.config.get(f"{k}.line_shape", "straight"))
+        if idx_shape >= 0: combo_shape.setCurrentIndex(idx_shape)
+        combo_shape.currentIndexChanged.connect(lambda idx, cb=combo_shape: self.upd(f"{k}.line_shape", cb.itemData(idx)))
+        layout.addWidget(combo_shape, 3, 1)
+        
+        layout.addWidget(self._lbl("Line Color"), 4, 0)
+        layout.addWidget(ColorBtn(self.config.get(f"{k}.color", "#BCFF4E"), lambda c: self.upd(f"{k}.color", c)), 4, 1)
+        
+        layout.addWidget(self._lbl("Thickness"), 5, 0)
+        layout.addWidget(self._slider(1, 10, self.config.get(f"{k}.thick", 1), lambda v: self.upd(f"{k}.thick", v), "px"), 5, 1)
+        
+        layout.addWidget(self._lbl("Opacity"), 6, 0)
+        layout.addWidget(self._slider(0, 100, self.config.get(f"{k}.opacity", 80), lambda v: self.upd(f"{k}.opacity", v), "%"), 6, 1)
+
+        return group
+
+    def mk_group_bboxes(self):
+        group = QGroupBox("Bounding Boxes")
+        layout = QGridLayout(group)
+        k = "modules.bboxes"
+        
+        layout.addWidget(self._chk("Enable Module", f"{k}.enabled"), 0, 0, 1, 3)
+        
+        layout.addWidget(self._lbl("Persons"), 1, 0)
+        layout.addWidget(ColorBtn(self.config.get(f"{k}.person_color"), lambda c: self.upd(f"{k}.person_color", c)), 1, 1)
+        layout.addWidget(self._slider(1, 10, self.config.get(f"{k}.person_thick"), lambda v: self.upd(f"{k}.person_thick", v), "px"), 1, 2)
+        
+        layout.addWidget(self._lbl("Faces"), 2, 0)
+        layout.addWidget(ColorBtn(self.config.get(f"{k}.face_color"), lambda c: self.upd(f"{k}.face_color", c)), 2, 1)
+        layout.addWidget(self._slider(1, 10, self.config.get(f"{k}.face_thick"), lambda v: self.upd(f"{k}.face_thick", v), "px"), 2, 2)
+        
+        layout.addWidget(self._lbl("Objects"), 3, 0)
+        layout.addWidget(ColorBtn(self.config.get(f"{k}.object_color"), lambda c: self.upd(f"{k}.object_color", c)), 3, 1)
+        layout.addWidget(self._slider(1, 10, self.config.get(f"{k}.object_thick"), lambda v: self.upd(f"{k}.object_thick", v), "px"), 3, 2)
+        
+        layout.addWidget(self._lbl("Label Size"), 4, 0)
+        layout.addWidget(self._slider(10, 200, self.config.get(f"{k}.label_scale"), lambda v: self.upd(f"{k}.label_scale", v), "%"), 4, 1, 1, 2)
+        
+        layout.addWidget(self._lbl("Text Color"), 5, 0)
+        layout.addWidget(ColorBtn(self.config.get(f"{k}.label_text_color"), lambda c: self.upd(f"{k}.label_text_color", c)), 5, 1)
+        
+        layout.addWidget(self._chk("Tactical Crosshair", f"{k}.show_crosshair"), 6, 0, 1, 3)
+        
+        return group
+
+    def mk_group_stats(self):
+        group = QGroupBox("Data Panel")
+        layout = QGridLayout(group)
+        k = "modules.stats"
+        
+        layout.addWidget(self._chk("Enable Module", f"{k}.enabled"), 0, 0, 1, 2)
+        
+        layout.addWidget(self._lbl("Title:"), 1, 0)
+        txt_header = QLineEdit()
+        txt_header.setText(self.config.get(f"{k}.header_text"))
+        txt_header.textChanged.connect(lambda x: self.upd(f"{k}.header_text", x))
+        layout.addWidget(txt_header, 1, 1)
+        
+        layout.addWidget(self._lbl("Position"), 2, 0)
+        layout.addWidget(self._pos_combo(f"{k}.position"), 2, 1)
+        
+        layout.addWidget(self._lbl("Size"), 3, 0)
+        layout.addWidget(self._slider(10, 200, self.config.get(f"{k}.scale"), lambda v: self.upd(f"{k}.scale", v), "%"), 3, 1)
+        
+        layout.addWidget(self._lbl("Text Color"), 4, 0)
+        layout.addWidget(ColorBtn(self.config.get(f"{k}.text_color"), lambda c: self.upd(f"{k}.text_color", c)), 4, 1)
+        
+        layout.addWidget(self._lbl("Background"), 5, 0)
+        layout.addWidget(ColorBtn(self.config.get(f"{k}.bg_color"), lambda c: self.upd(f"{k}.bg_color", c)), 5, 1)
+        
+        layout.addWidget(self._lbl("Opacity"), 6, 0)
+        layout.addWidget(self._slider(0, 100, self.config.get(f"{k}.bg_opacity"), lambda v: self.upd(f"{k}.bg_opacity", v), "%"), 6, 1)
+        
+        return group
+
+    def mk_group_minimap(self):
+        group = QGroupBox("Minimap Radar")
+        layout = QGridLayout(group)
+        k = "modules.minimap"
+        
+        layout.addWidget(self._chk("Enable Module", f"{k}.enabled"), 0, 0, 1, 2)
+        
+        layout.addWidget(self._lbl("Position"), 1, 0)
+        layout.addWidget(self._pos_combo(f"{k}.position"), 1, 1)
+        
+        layout.addWidget(self._lbl("Size"), 2, 0)
+        layout.addWidget(self._slider(50, 200, self.config.get(f"{k}.scale"), lambda v: self.upd(f"{k}.scale", v), "%"), 2, 1)
+        
+        layout.addWidget(self._lbl("Border Width"), 3, 0)
+        layout.addWidget(self._slider(0, 10, self.config.get(f"{k}.border_thick"), lambda v: self.upd(f"{k}.border_thick", v), "px"), 3, 1)
+        
+        layout.addWidget(self._lbl("Border Color"), 4, 0)
+        layout.addWidget(ColorBtn(self.config.get(f"{k}.border_color"), lambda c: self.upd(f"{k}.border_color", c)), 4, 1)
+        
+        layout.addWidget(self._lbl("Dot Size"), 5, 0)
+        layout.addWidget(self._slider(1, 10, self.config.get(f"{k}.dot_size"), lambda v: self.upd(f"{k}.dot_size", v), "px"), 5, 1)
+        
+        layout.addWidget(self._lbl("Background"), 6, 0)
+        layout.addWidget(ColorBtn(self.config.get(f"{k}.bg_color"), lambda c: self.upd(f"{k}.bg_color", c)), 6, 1)
+        
+        layout.addWidget(self._lbl("Opacity"), 7, 0)
+        layout.addWidget(self._slider(0, 100, self.config.get(f"{k}.bg_opacity"), lambda v: self.upd(f"{k}.bg_opacity", v), "%"), 7, 1)
+        
+        return group
+
+    def mk_group_collage(self):
+        group = QGroupBox("Face Collage")
+        layout = QGridLayout(group)
+        k = "modules.collage"
+        
+        layout.addWidget(self._chk("Enable Module", f"{k}.enabled"), 0, 0, 1, 2)
+        
+        layout.addWidget(self._lbl("Position"), 1, 0)
+        layout.addWidget(self._pos_combo(f"{k}.position"), 1, 1)
+        
+        layout.addWidget(self._lbl("Thumb Size"), 2, 0)
+        layout.addWidget(self._slider(5, 30, self.config.get(f"{k}.thumb_size_pct"), lambda v: self.upd(f"{k}.thumb_size_pct", v), "%"), 2, 1)
+        
+        layout.addWidget(self._lbl("Border Width"), 3, 0)
+        layout.addWidget(self._slider(0, 10, self.config.get(f"{k}.border_thick"), lambda v: self.upd(f"{k}.border_thick", v), "px"), 3, 1)
+        
+        layout.addWidget(self._lbl("Border Color"), 4, 0)
+        layout.addWidget(ColorBtn(self.config.get(f"{k}.border_color"), lambda c: self.upd(f"{k}.border_color", c)), 4, 1)
+        
+        layout.addWidget(self._lbl("Spacing Gap"), 5, 0)
+        layout.addWidget(self._slider(0, 50, self.config.get(f"{k}.gap_pct"), lambda v: self.upd(f"{k}.gap_pct", v), "%"), 5, 1)
+        
+        layout.addWidget(self._lbl("Opacity"), 6, 0)
+        layout.addWidget(self._slider(0, 100, self.config.get(f"{k}.opacity"), lambda v: self.upd(f"{k}.opacity", v), "%"), 6, 1)
+        
+        return group
+
+    def mk_group_timecode(self):
+        group = QGroupBox("Timecode")
+        layout = QGridLayout(group)
+        k = "modules.timecode"
+        
+        layout.addWidget(self._chk("Enable Module", f"{k}.enabled"), 0, 0, 1, 2)
+        
+        layout.addWidget(self._lbl("Position"), 1, 0)
+        layout.addWidget(self._pos_combo(f"{k}.position"), 1, 1)
+        
+        layout.addWidget(self._lbl("Size"), 2, 0)
+        layout.addWidget(self._slider(10, 200, self.config.get(f"{k}.scale"), lambda v: self.upd(f"{k}.scale", v), "%"), 2, 1)
+        
+        layout.addWidget(self._lbl("Text Color"), 3, 0)
+        layout.addWidget(ColorBtn(self.config.get(f"{k}.text_color"), lambda c: self.upd(f"{k}.text_color", c)), 3, 1)
+        
+        layout.addWidget(self._lbl("Background"), 4, 0)
+        layout.addWidget(ColorBtn(self.config.get(f"{k}.bg_color"), lambda c: self.upd(f"{k}.bg_color", c)), 4, 1)
+        
+        layout.addWidget(self._lbl("Opacity"), 5, 0)
+        layout.addWidget(self._slider(0, 100, self.config.get(f"{k}.bg_opacity"), lambda v: self.upd(f"{k}.bg_opacity", v), "%"), 5, 1)
+        
+        return group
+
+    def mk_group_msg(self):
+        group = QGroupBox("Custom Message")
+        layout = QGridLayout(group)
+        k = "modules.custom_msg"
+        
+        layout.addWidget(self._chk("Enable Module", f"{k}.enabled"), 0, 0, 1, 2)
+        
+        txt_msg = QPlainTextEdit()
+        txt_msg.setPlainText(self.config.get(f"{k}.text"))
+        txt_msg.setFixedHeight(60)
+        txt_msg.textChanged.connect(lambda: self.upd(f"{k}.text", txt_msg.toPlainText()))
+        layout.addWidget(txt_msg, 1, 0, 1, 2)
+        
+        layout.addWidget(self._lbl("Position"), 2, 0)
+        layout.addWidget(self._pos_combo(f"{k}.position"), 2, 1)
+        
+        layout.addWidget(self._lbl("Size"), 3, 0)
+        layout.addWidget(self._slider(10, 200, self.config.get(f"{k}.scale"), lambda v: self.upd(f"{k}.scale", v), "%"), 3, 1)
+        
+        layout.addWidget(self._lbl("Text Color"), 4, 0)
+        layout.addWidget(ColorBtn(self.config.get(f"{k}.text_color"), lambda c: self.upd(f"{k}.text_color", c)), 4, 1)
+        
+        layout.addWidget(self._lbl("Background"), 5, 0)
+        layout.addWidget(ColorBtn(self.config.get(f"{k}.bg_color"), lambda c: self.upd(f"{k}.bg_color", c)), 5, 1)
+        
+        layout.addWidget(self._lbl("Opacity"), 6, 0)
+        layout.addWidget(self._slider(0, 100, self.config.get(f"{k}.bg_opacity"), lambda v: self.upd(f"{k}.bg_opacity", v), "%"), 6, 1)
+        
+        return group
+
+    # -----------------------------------------------------------------
+    # TAB 3: EXPORT
+    # -----------------------------------------------------------------
+    def mk_tab_export(self):
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setSpacing(20)
+        
+        grp_settings = QGroupBox("Export Settings")
+        lay_settings = QVBoxLayout(grp_settings)
+        lay_settings.setSpacing(15)
+        
+        lbl_prof = QLabel("Profile:")
+        self.cmb_prof = QComboBox()
+        self.cmb_prof.addItems(["Final Render", "Compositing Ready", "JSON Only"])
+        lay_settings.addWidget(lbl_prof)
+        lay_settings.addWidget(self.cmb_prof)
+        
+        lbl_codec = QLabel("Codec:")
+        self.cmb_cod = QComboBox()
+        self.cmb_cod.addItems(["H.264", "H.265"])
+        lay_settings.addWidget(lbl_codec)
+        lay_settings.addWidget(self.cmb_cod)
+        
+        lbl_name = QLabel("File Name:")
+        self.txt_name = QLineEdit()
+        self.txt_name.setPlaceholderText("Auto")
+        lay_settings.addWidget(lbl_name)
+        lay_settings.addWidget(self.txt_name)
+        
+        lbl_dest = QLabel("Destination:")
+        lay_settings.addWidget(lbl_dest)
+        
+        self.btn_dest = QPushButton("Select Folder...")
+        self.btn_dest.clicked.connect(self.sel_out)
+        lay_settings.addWidget(self.btn_dest)
+        
+        layout.addWidget(grp_settings)
+        
+        layout.addStretch()
+        
+        grp_action = QGroupBox("Action")
+        lay_action = QVBoxLayout(grp_action)
+        
+        self.lbl_prog = QLabel("Ready")
+        self.lbl_prog.setAlignment(Qt.AlignCenter)
+        lay_action.addWidget(self.lbl_prog)
+        
+        self.btn_render = QPushButton("START RENDER")
+        self.btn_render.setMinimumHeight(50)
+        font_btn = QFont()
+        font_btn.setBold(True)
+        self.btn_render.setFont(font_btn)
         self.btn_render.clicked.connect(self.run_render)
-        l.addWidget(self.btn_render)
+        lay_action.addWidget(self.btn_render)
         
-        self.lbl_prog = QLabel("--:--")
-        l.addWidget(self.lbl_prog)
-        return fr
+        self.btn_open_folder = QPushButton("Open Destination Folder")
+        self.btn_open_folder.setVisible(False)
+        self.btn_open_folder.clicked.connect(self.open_output_folder)
+        lay_action.addWidget(self.btn_open_folder)
+        
+        layout.addWidget(grp_action)
+        
+        return content
 
-    def mk_col_bboxes(self):
-        g = QGroupBox("BBOXES"); l = QGridLayout(g); k = "modules.bboxes"
-        l.addWidget(self._chk("Activar", f"{k}.enabled"), 0, 0, 1, 3)
-        l.addWidget(QLabel("Personas"), 1, 0); l.addWidget(ColorBtn(self.config.get(f"{k}.person_color"), lambda c: self.upd(f"{k}.person_color", c)), 1, 1); l.addWidget(self._slider(1, 10, self.config.get(f"{k}.person_thick"), lambda v: self.upd(f"{k}.person_thick", v), "px"), 1, 2)
-        l.addWidget(QLabel("Caras"), 2, 0); l.addWidget(ColorBtn(self.config.get(f"{k}.face_color"), lambda c: self.upd(f"{k}.face_color", c)), 2, 1); l.addWidget(self._slider(1, 10, self.config.get(f"{k}.face_thick"), lambda v: self.upd(f"{k}.face_thick", v), "px"), 2, 2)
-        l.addWidget(QLabel("Objetos"), 3, 0); l.addWidget(ColorBtn(self.config.get(f"{k}.object_color"), lambda c: self.upd(f"{k}.object_color", c)), 3, 1); l.addWidget(self._slider(1, 10, self.config.get(f"{k}.object_thick"), lambda v: self.upd(f"{k}.object_thick", v), "px"), 3, 2)
-        l.addWidget(QLabel("Etiqueta"), 4, 0); l.addWidget(self._slider(10, 200, self.config.get(f"{k}.label_scale"), lambda v: self.upd(f"{k}.label_scale", v), "%"), 4, 1, 1, 2)
-        l.addWidget(QLabel("Color Texto"), 5, 0); l.addWidget(ColorBtn(self.config.get(f"{k}.label_text_color"), lambda c: self.upd(f"{k}.label_text_color", c)), 5, 1)
-        l.addWidget(self._chk("Crosshair", f"{k}.show_crosshair"), 6, 0, 1, 3)
-        self.dash_l.addWidget(g)
+    # -----------------------------------------------------------------
+    # HELPERS & LOGIC BINDINGS 
+    # -----------------------------------------------------------------
+    def _lbl(self, text):
+        lbl = QLabel(text)
+        lbl.setStyleSheet("color: palette(dark);")
+        return lbl
 
-    def mk_col_stats(self):
-        g = QGroupBox("STATS"); l = QGridLayout(g); k = "modules.stats"
-        l.addWidget(self._chk("Activar", f"{k}.enabled"), 0, 0, 1, 2)
-        ht = QLineEdit(); ht.setText(self.config.get(f"{k}.header_text")); ht.textChanged.connect(lambda x: self.upd(f"{k}.header_text", x)); l.addWidget(QLabel("Titulo:"), 1, 0); l.addWidget(ht, 1, 1)
-        l.addWidget(QLabel("Posicion"), 2, 0); l.addWidget(self._pos_combo(f"{k}.position"), 2, 1)
-        l.addWidget(QLabel("Tamaño"), 3, 0); l.addWidget(self._slider(10, 200, self.config.get(f"{k}.scale"), lambda v: self.upd(f"{k}.scale", v), "%"), 3, 1)
-        l.addWidget(QLabel("Texto"), 4, 0); l.addWidget(ColorBtn(self.config.get(f"{k}.text_color"), lambda c: self.upd(f"{k}.text_color", c)), 4, 1)
-        l.addWidget(QLabel("Fondo"), 5, 0); l.addWidget(ColorBtn(self.config.get(f"{k}.bg_color"), lambda c: self.upd(f"{k}.bg_color", c)), 5, 1)
-        l.addWidget(QLabel("Opacidad"), 6, 0); l.addWidget(self._slider(0, 100, self.config.get(f"{k}.bg_opacity"), lambda v: self.upd(f"{k}.bg_opacity", v), "%"), 6, 1)
-        self.dash_l.addWidget(g)
+    def _chk(self, title, config_key):
+        checkbox = QCheckBox(title)
+        checkbox.setStyleSheet("color: palette(dark);")
+        checkbox.setChecked(self.config.get(config_key, True))
+        checkbox.toggled.connect(lambda v: self.upd(config_key, v))
+        return checkbox
 
-    def mk_col_minimap(self):
-        g = QGroupBox("MINIMAP"); l = QGridLayout(g); k = "modules.minimap"
-        l.addWidget(self._chk("Activar", f"{k}.enabled"), 0, 0, 1, 2)
-        l.addWidget(QLabel("Posicion"), 1, 0); l.addWidget(self._pos_combo(f"{k}.position"), 1, 1)
-        l.addWidget(QLabel("Tamaño"), 2, 0); l.addWidget(self._slider(50, 200, self.config.get(f"{k}.scale"), lambda v: self.upd(f"{k}.scale", v), "%"), 2, 1)
-        l.addWidget(QLabel("Borde"), 3, 0); l.addWidget(self._slider(0, 10, self.config.get(f"{k}.border_thick"), lambda v: self.upd(f"{k}.border_thick", v), "px"), 3, 1)
-        l.addWidget(QLabel("Col Borde"), 4, 0); l.addWidget(ColorBtn(self.config.get(f"{k}.border_color"), lambda c: self.upd(f"{k}.border_color", c)), 4, 1)
-        l.addWidget(QLabel("Tam. Puntos"), 5, 0); l.addWidget(self._slider(1, 10, self.config.get(f"{k}.dot_size"), lambda v: self.upd(f"{k}.dot_size", v), "px"), 5, 1)
-        l.addWidget(QLabel("Fondo"), 6, 0); l.addWidget(ColorBtn(self.config.get(f"{k}.bg_color"), lambda c: self.upd(f"{k}.bg_color", c)), 6, 1)
-        l.addWidget(QLabel("Opacidad"), 7, 0); l.addWidget(self._slider(0, 100, self.config.get(f"{k}.bg_opacity"), lambda v: self.upd(f"{k}.bg_opacity", v), "%"), 7, 1)
-        self.dash_l.addWidget(g)
+    def _slider(self, min_val, max_val, current_val, callback, unit=""):
+        container = QWidget()
+        layout = QHBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+        
+        slider = QSlider(Qt.Horizontal)
+        slider.setRange(min_val, max_val)
+        slider.setValue(int(current_val or min_val))
+        
+        label_value = QLabel(f"{slider.value()}{unit}")
+        label_value.setFixedWidth(45)
+        label_value.setStyleSheet("color: palette(dark);")
+        
+        def on_change(val):
+            callback(val)
+            label_value.setText(f"{val}{unit}")
+            
+        slider.valueChanged.connect(on_change)
+        
+        layout.addWidget(slider)
+        layout.addWidget(label_value)
+        return container
 
-    def mk_col_collage(self):
-        g = QGroupBox("COLLAGE"); l = QGridLayout(g); k = "modules.collage"
-        l.addWidget(self._chk("Activar", f"{k}.enabled"), 0, 0, 1, 2)
-        l.addWidget(QLabel("Posicion"), 1, 0); l.addWidget(self._pos_combo(f"{k}.position"), 1, 1)
-        l.addWidget(QLabel("Tamaño Fotos"), 2, 0); l.addWidget(self._slider(5, 30, self.config.get(f"{k}.thumb_size_pct"), lambda v: self.upd(f"{k}.thumb_size_pct", v), "%"), 2, 1)
-        l.addWidget(QLabel("Borde"), 3, 0); l.addWidget(self._slider(0, 10, self.config.get(f"{k}.border_thick"), lambda v: self.upd(f"{k}.border_thick", v), "px"), 3, 1)
-        l.addWidget(QLabel("Col Borde"), 4, 0); l.addWidget(ColorBtn(self.config.get(f"{k}.border_color"), lambda c: self.upd(f"{k}.border_color", c)), 4, 1)
-        l.addWidget(QLabel("Gap"), 5, 0); l.addWidget(self._slider(0, 50, self.config.get(f"{k}.gap_pct"), lambda v: self.upd(f"{k}.gap_pct", v), "%"), 5, 1)
-        l.addWidget(QLabel("Opacidad"), 6, 0); l.addWidget(self._slider(0, 100, self.config.get(f"{k}.opacity"), lambda v: self.upd(f"{k}.opacity", v), "%"), 6, 1)
-        self.dash_l.addWidget(g)
-
-    def mk_col_timecode(self):
-        g = QGroupBox("TIMECODE"); l = QGridLayout(g); k = "modules.timecode"
-        l.addWidget(self._chk("Activar", f"{k}.enabled"), 0, 0, 1, 2)
-        l.addWidget(QLabel("Posicion"), 1, 0); l.addWidget(self._pos_combo(f"{k}.position"), 1, 1)
-        l.addWidget(QLabel("Tamaño"), 2, 0); l.addWidget(self._slider(10, 200, self.config.get(f"{k}.scale"), lambda v: self.upd(f"{k}.scale", v), "%"), 2, 1)
-        l.addWidget(QLabel("Texto"), 3, 0); l.addWidget(ColorBtn(self.config.get(f"{k}.text_color"), lambda c: self.upd(f"{k}.text_color", c)), 3, 1)
-        l.addWidget(QLabel("Fondo"), 4, 0); l.addWidget(ColorBtn(self.config.get(f"{k}.bg_color"), lambda c: self.upd(f"{k}.bg_color", c)), 4, 1)
-        l.addWidget(QLabel("Opacidad"), 5, 0); l.addWidget(self._slider(0, 100, self.config.get(f"{k}.bg_opacity"), lambda v: self.upd(f"{k}.bg_opacity", v), "%"), 5, 1)
-        self.dash_l.addWidget(g)
-
-    def mk_col_msg(self):
-        g = QGroupBox("MENSAJE"); l = QGridLayout(g); k = "modules.custom_msg"
-        l.addWidget(self._chk("Activar", f"{k}.enabled"), 0, 0, 1, 2)
-        t = QPlainTextEdit(); t.setPlainText(self.config.get(f"{k}.text")); t.setFixedHeight(60); t.textChanged.connect(lambda: self.upd(f"{k}.text", t.toPlainText())); l.addWidget(t, 1, 0, 1, 2)
-        l.addWidget(QLabel("Posicion"), 2, 0); l.addWidget(self._pos_combo(f"{k}.position"), 2, 1)
-        l.addWidget(QLabel("Tamaño"), 3, 0); l.addWidget(self._slider(10, 200, self.config.get(f"{k}.scale"), lambda v: self.upd(f"{k}.scale", v), "%"), 3, 1)
-        l.addWidget(QLabel("Texto"), 4, 0); l.addWidget(ColorBtn(self.config.get(f"{k}.text_color"), lambda c: self.upd(f"{k}.text_color", c)), 4, 1)
-        l.addWidget(QLabel("Fondo"), 5, 0); l.addWidget(ColorBtn(self.config.get(f"{k}.bg_color"), lambda c: self.upd(f"{k}.bg_color", c)), 5, 1)
-        l.addWidget(QLabel("Opacidad"), 6, 0); l.addWidget(self._slider(0, 100, self.config.get(f"{k}.bg_opacity"), lambda v: self.upd(f"{k}.bg_opacity", v), "%"), 6, 1)
-        self.dash_l.addWidget(g)
-
-    def _chk(self, t, k):
-        c = QCheckBox(t); c.setChecked(self.config.get(k, True)); c.toggled.connect(lambda v: self.upd(k, v)); return c
-    def _slider(self, mn, mx, v, fn, unit=""):
-        w = QWidget(); l = QHBoxLayout(w); l.setContentsMargins(0,0,0,0); l.setSpacing(5)
-        s = QSlider(Qt.Horizontal); s.setRange(mn, mx); s.setValue(int(v or mn)); lbl = QLabel(f"{s.value()}{unit}"); lbl.setFixedWidth(35)
-        def chg(val): fn(val); lbl.setText(f"{val}{unit}")
-        s.valueChanged.connect(chg); l.addWidget(s); l.addWidget(lbl); return w
-    def _pos_combo(self, k):
-        c = QComboBox(); c.addItems(["top_left", "top_center", "top_right", "center_left", "center_center", "center_right", "bottom_left", "bottom_center", "bottom_right"])
-        c.setCurrentText(self.config.get(k, "top_left")); c.currentTextChanged.connect(lambda t: self.upd(k, t)); return c
+    def _pos_combo(self, config_key):
+        combo = QComboBox()
+        pos_map = [
+            ("Top Left", "top_left"), ("Top Center", "top_center"), ("Top Right", "top_right"),
+            ("Center Left", "center_left"), ("Center", "center_center"), ("Center Right", "center_right"),
+            ("Bottom Left", "bottom_left"), ("Bottom Center", "bottom_center"), ("Bottom Right", "bottom_right")
+        ]
+        
+        for text, internal_data in pos_map:
+            combo.addItem(text, internal_data)
+            
+        current_val = self.config.get(config_key, "top_left")
+        idx = combo.findData(current_val)
+        if idx >= 0:
+            combo.setCurrentIndex(idx)
+            
+        combo.currentIndexChanged.connect(lambda idx, cb=combo: self.upd(config_key, cb.itemData(idx)))
+        return combo
     
     def upd(self, key, val): 
         self.config.set(key, val)
         self.preview.update_config_live()
         self.preview.force_refresh()
     
-    def upd_yolo(self, t): 
-        l = [x.strip() for x in t.split(",") if x.strip()]
-        self.config.set("models.custom_classes", l)
-        self.upd("models.custom_classes", l)
+    def upd_yolo(self, text_input): 
+        tags_list = [x.strip() for x in text_input.split(",") if x.strip()]
+        self.config.set("models.custom_classes", tags_list)
+        
+        if tags_list:
+            self.lbl_yolo_tags.setText("Active targets: " + ", ".join(tags_list))
+        else:
+            self.lbl_yolo_tags.setText("No custom targets active")
+            
+        self.upd("models.custom_classes", tags_list)
     
     def setup_conns(self):
-        self.engine.progress_updated.connect(lambda p,f,t: self.lbl_prog.setText(f"{p}%"))
+        self.engine.progress_updated.connect(lambda p, f, fps: self.lbl_prog.setText(f"Processing Frame {f} | {p}% | ~{int(fps)} FPS"))
         self.engine.processing_finished.connect(self.end_render)
     
     def load_video(self):
-        f, _ = QFileDialog.getOpenFileName(self, "Video", "", "Video (*.mp4 *.mov)")
-        if f:
-            self.lbl_vid_name.setText(os.path.basename(f))
-            self.preview.load_video(f)
-            self.txt_name.setText(os.path.basename(f).split('.')[0] + "_proc")
-            self.engine.video_path = f
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select Video", "", "Video Files (*.mp4 *.mov)")
+        if file_path:
+            filename = os.path.basename(file_path)
+            self.lbl_vid_name.setText(filename)
+            self.preview.load_video(file_path)
+            self.txt_name.setText(filename.split('.')[0] + "_output")
+            self.engine.video_path = file_path
 
     def sel_out(self):
-        d = QFileDialog.getExistingDirectory(self, "Salida")
-        if d:
-            self.config.set("output.output_dir", d)
-            self.btn_dest.setText(".../" + os.path.basename(d))
+        directory = QFileDialog.getExistingDirectory(self, "Select Output Folder")
+        if directory:
+            self.config.set("output.output_dir", directory)
+            self.btn_dest.setText(".../" + os.path.basename(directory))
 
     def run_render(self):
-        if not hasattr(self.engine, 'video_path'): return
+        if not hasattr(self.engine, 'video_path') or not self.engine.video_path: 
+            QMessageBox.warning(self, "Warning", "Please open a video before rendering.")
+            return
+            
         self.config.set("output.custom_filename", self.txt_name.text())
         self.config.set("output.profile", self.cmb_prof.currentText())
         self.config.set("output.codec", self.cmb_cod.currentText())
+        
         self.engine.setup_render(self.engine.video_path)
         self.preview.pause_playback()
         self.engine.start()
+        
         self.btn_render.setEnabled(False)
-        self.btn_render.setText("Procesando...")
+        self.btn_render.setText("PROCESSING...")
+        self.btn_open_folder.setVisible(False)
 
-    def end_render(self, s):
-        QMessageBox.information(self, "Fin", f"Guardado en:\n{s['output_dir']}")
+    def end_render(self, result_dict):
+        if "error" in result_dict:
+            QMessageBox.critical(self, "Error", result_dict["error"])
+        else:
+            out_dir = result_dict.get('output_dir', 'Unknown')
+            self.sb.showMessage(f"Processing completed successfully: {out_dir}", 10000)
+            self.last_out_dir = out_dir
+            self.btn_open_folder.setVisible(True)
+            
         self.btn_render.setEnabled(True)
-        self.btn_render.setText("▶ RENDERIZAR")
-        self.lbl_prog.setText("100%")
+        self.btn_render.setText("START RENDER")
+        self.lbl_prog.setText("Render Complete")
 
-    def closeEvent(self, e: QCloseEvent):
+    def open_output_folder(self):
+        if hasattr(self, 'last_out_dir') and os.path.exists(self.last_out_dir):
+            if sys.platform == 'darwin': 
+                subprocess.Popen(['open', self.last_out_dir])
+            elif sys.platform == 'win32': 
+                os.startfile(self.last_out_dir)
+            else: 
+                subprocess.Popen(['xdg-open', self.last_out_dir])
+
+    def closeEvent(self, event: QCloseEvent):
         self.config.save_config()
         self.preview.close()
-        e.accept()
+        event.accept()
