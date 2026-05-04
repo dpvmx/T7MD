@@ -1,5 +1,5 @@
 """
-T7MD Headless Runner - v1.6 (Diagnostic Mode)
+MODESYS Headless Runner - v1.6 (Diagnostic Mode)
 """
 import sys
 import argparse
@@ -38,7 +38,8 @@ def run_headless():
     config.set("output.skip_video", True) # Seguimos saltando el video para velocidad
 
     base_name = os.path.splitext(os.path.basename(args.input))[0]
-    config.set("output.custom_filename", f"{base_name}_t7md_data")
+    # Nuevo sufijo para los datos exportados a AE
+    config.set("output.custom_filename", f"{base_name}_modesys_data")
 
     engine = VideoEngine(config)
 
@@ -52,7 +53,6 @@ def run_headless():
             last_pct = pct
 
     def on_finished(result):
-        # AQUÍ ESTÁ EL CAMBIO CLAVE:
         if result and 'json_file' in result:
             sys.stdout.write(f"SUCCESS|{result['json_file']}\n")
         else:

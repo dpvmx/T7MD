@@ -11,25 +11,19 @@ os.environ["TRANSFORMERS_VERBOSITY"] = "error"
 from PySide6.QtWidgets import QApplication
 from gui.main_window import MainWindow
 
-# --- ARTE ASCII (Backup por si se ejecuta directo con python) ---
+# --- ARTE ASCII (MODESYS) ---
 ASCII_HEADER = r"""
- ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄▄  ▄▄       ▄▄  ▄▄▄▄▄▄▄▄▄▄  
-▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌▐░░▌     ▐░░▌▐░░░░░░░░░░▌ 
- ▀▀▀▀█░█▀▀▀▀  ▀▀▀▀▀▀▀▀▀█░▌ ▀▀▀▀▀▀▀▀▀█░▌ ▀▀▀▀▀▀▀▀▀█░▌▐░▌░▌   ▐░▐░▌▐░█▀▀▀▀▀▀▀█░▌
-     ▐░▌              ▐░▌          ▐░▌          ▐░▌ ▐░▌▐░▌ ▐░▌▐░▌▐░▌       ▐░▌
-     ▐░▌             ▐░▌          ▐░▌          ▐░▌  ▐░▌ ▐░▐░▌ ▐░▌▐░▌       ▐░▌
-     ▐░▌            ▐░▌          ▐░▌          ▐░▌   ▐░▌  ▐░▌  ▐░▌▐░▌       ▐░▌
-     ▐░▌           ▐░▌          ▐░▌          ▐░▌    ▐░▌   ▀   ▐░▌▐░▌       ▐░▌
-     ▐░▌          ▐░▌          ▐░▌          ▐░▌     ▐░▌       ▐░▌▐░▌       ▐░▌
-     ▐░▌         ▐░▌          ▐░▌          ▐░▌      ▐░▌       ▐░▌▐░█▄▄▄▄▄▄▄█░▌
-     ▐░▌        ▐░▌          ▐░▌          ▐░▌       ▐░▌       ▐░▌▐░░░░░░░░░░▌ 
-      ▀          ▀            ▀            ▀         ▀         ▀  ▀▀▀▀▀▀▀▀▀▀  
-________________________________________________________________________________
-|                                                                               |
-|                  MOTION DETECTTION SYSTEM BY DPVMX                            |
-|                  Version: 8.3.0                                               |
-|                  code by: @dpvmx                                              |
-|_______________________________________________________________________________|                                                                              
+  __  __  ___  ____  _____ ______   __  __ 
+ |  \/  |/ _ \|  _ \| ____/ ___\ \ / / / / 
+ | |\/| | | | | | | |  _| \___ \\ V / / /  
+ | |  | | |_| | |_| | |___ ___) || |  \ \  
+ |_|  |_|\___/|____/|_____|____/ |_|   \_\ 
+____________________________________________________
+|                                                  |
+|      MOTION DETECTION SYSTEM                     |
+|      Version: 8.4.0                              |
+|      Code by: @dpvmx                             |
+|__________________________________________________|
 """
 
 def setup_logging():
@@ -49,13 +43,13 @@ def main():
     os.system('cls' if os.name == 'nt' else 'clear')
     
     # 2. Imprimir Cabecera
-    print("\033[92m") # Color Verde Terminal
+    print("\033[96m") # Color Cyan Terminal
     print(ASCII_HEADER)
     print("\033[0m") # Reset Color
     
     # 3. Iniciar Logs
     setup_logging()
-    logging.info("Inicializando Sistema T7MD Vision Pro...")
+    logging.info("Inicializando MODESYS...")
     logging.info(f"Directorio de trabajo: {os.getcwd()}")
     
     # Manejo de señal para cerrar con Ctrl+C limpio

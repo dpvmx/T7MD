@@ -1,6 +1,6 @@
 """
-Gestor de configuración JSON para T7MD Vision Pro
-V8.3.0: Versión unificada tras auditoría.
+Gestor de configuración JSON para MODESYS
+V8.4.1: Rebranding Release & Node Size Control.
 """
 
 import json
@@ -12,13 +12,13 @@ class ConfigManager:
         if config_dir:
             self.config_dir = Path(config_dir)
         else:
-            self.config_dir = Path.home() / ".t7md_vision"
+            self.config_dir = Path.home() / ".modesys"
         
         self.config_dir.mkdir(exist_ok=True)
         self.config_file = self.config_dir / "config.json"
         
         self.default_config = {
-            "version": "8.3.0", # <-- VERSIÓN UNIFICADA
+            "version": "8.4.1",
             "models": {
                 "use_faces": True,
                 "use_persons": True,
@@ -29,6 +29,16 @@ class ConfigManager:
                 "object_confidence": 0.3
             },
             "modules": {
+                "constellation": {
+                    "enabled": True,
+                    "style": "mesh",
+                    "targets": ["face", "person", "object"],
+                    "line_shape": "straight",
+                    "color": "#BCFF4E",
+                    "thick": 1,
+                    "node_size": 4,  # <-- NUEVA VARIABLE
+                    "opacity": 80
+                },
                 "bboxes": {
                     "enabled": True,
                     "person_color": "#00FF00",
@@ -43,7 +53,7 @@ class ConfigManager:
                 },
                 "stats": {
                     "enabled": True,
-                    "header_text": "T7MD VISION PRO",
+                    "header_text": "MODESYS",
                     "position": "top_left",
                     "scale": 100,
                     "text_color": "#FFFFFF",

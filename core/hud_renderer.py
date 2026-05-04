@@ -1,8 +1,9 @@
 """
-Renderizador de HUD Profesional T7MD v8.4
+Renderizador de HUD Profesional MODESYS v8.4.1
 Feat: Advanced Techy Stats with conditional latency alerts.
 Feat: Constellation overlay module (Mesh, Sequential, Hub).
 Feat: Bezier Curve mathematical implementation for Constellation links.
+Feat: Geometric node outlines controlled by UI Slider.
 """
 
 import cv2
@@ -100,8 +101,8 @@ class HUDRenderer:
         except Exception as e:
             logging.error(f"[HUD BBOX ERROR] {e}")
 
-    # --- MATEMATICAS DE CURVA DE BEZIER ---
-    def _draw_curved_line(self, draw, pt1, pt2, color, thickness):
+    # --- MATEMATICAS DE CURVA DE BEZIER CON NODO DINAMICO ---
+    def _draw_curved_line(self, draw, pt1, pt2, color, thickness, node_size):
         dx = pt2[0] - pt1[0]
         dy = pt2[1] - pt1[1]
         dist = math.hypot(dx, dy)
@@ -119,18 +120,21 @@ class HUDRenderer:
         offset = dist * 0.25 
         cp = (mx + nx * offset, my + ny * offset)
         
-        # 4. Interpolación Bézier
-        steps = max(10, int(dist / 10)) # Resolución dinámica basada en distancia
+        # 4. Nodo de Anclaje Bezier (Controlado por slider)
+        if node_size > 0:
+            draw.ellipse([(cp[0]-node_size, cp[1]-node_size), (cp[0]+node_size, cp[1]+node_size)], outline=color, width=thickness)
+
+        # 5. Interpolación Bézier
+        steps = max(10, int(dist / 10))
         pts = []
         for i in range(steps + 1):
             t = i / steps
             inv_t = 1.0 - t
-            # Fórmula Bézier Cuadrática
             x = (inv_t**2)*pt1[0] + 2*inv_t*t*cp[0] + (t**2)*pt2[0]
             y = (inv_t**2)*pt1[1] + 2*inv_t*t*cp[1] + (t**2)*pt2[1]
             pts.append((int(x), int(y)))
             
-        # 5. Dibujar curva conectando los micro-segmentos rectos
+        # 6. Dibujar curva conectando los micro-segmentos rectos
         for i in range(len(pts)-1):
             draw.line([pts[i], pts[i+1]], fill=color, width=thickness)
 
@@ -150,11 +154,13 @@ class HUDRenderer:
         thickness = int(cfg.get("thick", 1))
         alpha = int(cfg.get("opacity", 80) * 2.55)
         color_rgba = c_rgb + (alpha,)
+        
+        # --- OBTENER TAMAÑO DE NODO DESDE CONFIG ---
+        node_base_size = int(cfg.get("node_size", 4))
 
-        # Función enrutadora (Recto vs Curvo)
         def draw_link(p1, p2):
             if line_shape == "curved":
-                self._draw_curved_line(draw, p1, p2, color_rgba, thickness)
+                self._draw_curved_line(draw, p1, p2, color_rgba, thickness, node_base_size)
             else:
                 draw.line([p1, p2], fill=color_rgba, width=thickness)
 
@@ -176,6 +182,13 @@ class HUDRenderer:
                     if d < w_screen * 0.4: 
                         draw_link(valid_points[i], valid_points[j])
 
+        # --- NODOS PRINCIPALES DE DETECCIÓN ---
+        if node_base_size > 0:
+            # El nodo principal es 3 veces más grande que el de anclaje
+            r_node = node_base_size * 3 
+            for pt in valid_points:
+                draw.ellipse([(pt[0]-r_node, pt[1]-r_node), (pt[0]+r_node, pt[1]+r_node)], outline=color_rgba, width=thickness)
+
     # --- STATS AVANZADOS ---
     def draw_stats_panel(self, draw, w_screen, h_screen, stats, meta):
         try:
@@ -184,7 +197,7 @@ class HUDRenderer:
             font_size = self._get_responsive_size(14, h_screen, cfg.get("scale", 100))
             font = self._get_font(font_size); f_size = getattr(font, 'size', 12) 
             
-            header = cfg.get("header_text", "aiMODES SYS")
+            header = cfg.get("header_text", "MODESYS")
             latency = meta.get("latency", 0.0)
             device = meta.get("device", "CPU")
             avg_conf = meta.get("avg_conf", 0.0) * 100
@@ -379,5 +392,4 @@ class HUDRenderer:
         elif layer_type == "collage" and base_image:
             self.draw_collage(overlay, draw, w, h, frame_result.detections, base_image)
             
-        # CORRECCIÓN DE BUG: COLOR_RGBA2BGRA
         return cv2.cvtColor(np.array(overlay), cv2.COLOR_RGBA2BGRA)

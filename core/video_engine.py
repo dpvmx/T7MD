@@ -6,7 +6,6 @@ import urllib.parse
 from PySide6.QtCore import QThread, Signal
 from core.yolo_processor import YOLOProcessor
 
-# Intentamos importar el procesador de profundidad
 try:
     from core.depth_processor import DepthProcessor
 except ImportError:
@@ -63,7 +62,8 @@ class VideoEngine(QThread):
         if total_frames == 0: total_frames = 1
 
         out_conf = self.config.get("output")
-        filename = out_conf.get("custom_filename") or f"T7MD_{int(time.time())}"
+        # --- REBRANDING AQUÍ ---
+        filename = out_conf.get("custom_filename") or f"MODESYS_{int(time.time())}"
         out_dir = out_conf.get("output_dir", "outputs")
         
         project_dir = os.path.join(out_dir, filename)
@@ -78,7 +78,6 @@ class VideoEngine(QThread):
         is_json_only = (profile == "JSON Only")
         save_crops = out_conf.get("save_crops", True)
 
-        # Estructura de subcarpetas profesional para Compositing
         comp_dirs = {}
         if is_compositing:
             bbox_base = os.path.join(project_dir, "BBoxes")
@@ -179,7 +178,6 @@ class VideoEngine(QThread):
                     frame_result.frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     video_info = {"fps": fps}
                     
-                    # 1. Exportación BBox Separada
                     if self.config.get("modules.bboxes.enabled", True):
                         img_f = self.processor.hud.render_layer(width, height, frame_result, video_info, "bbox_faces")
                         cv2.imwrite(os.path.join(comp_dirs["bbox_faces"], f"faces_{frame_idx:05d}.png"), img_f)
@@ -190,19 +188,16 @@ class VideoEngine(QThread):
                         img_o = self.processor.hud.render_layer(width, height, frame_result, video_info, "bbox_objects")
                         cv2.imwrite(os.path.join(comp_dirs["bbox_objects"], f"objects_{frame_idx:05d}.png"), img_o)
                     
-                    # 2. Exportación Constellation
                     if self.config.get("modules.constellation.enabled", False):
                         img_c = self.processor.hud.render_layer(width, height, frame_result, video_info, "constellation")
                         cv2.imwrite(os.path.join(comp_dirs["constellation"], f"const_{frame_idx:05d}.png"), img_c)
                     
-                    # 3. Exportación HUD Individual
                     hud_modules = ["minimap", "stats", "timecode", "custom_msg", "collage"]
                     for mod in hud_modules:
                         if self.config.get(f"modules.{mod}.enabled", False):
                             img_h = self.processor.hud.render_layer(width, height, frame_result, video_info, mod)
                             cv2.imwrite(os.path.join(comp_dirs[mod], f"{mod}_{frame_idx:05d}.png"), img_h)
                     
-                    # 4. Crops
                     if save_crops:
                         for i, face_det in enumerate(raw_detections.get("faces", [])):
                             fx1, fy1, fx2, fy2 = map(int, face_det["bbox"])
