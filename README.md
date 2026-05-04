@@ -1,5 +1,5 @@
 # MODESYS
-**Motion Detection System by Triplesiete**
+**Motion Detection System**
 
 MODESYS is a high-performance, studio-grade desktop application designed for AI-assisted video analysis, motion tracking, and post-production asset generation. It leverages state-of-the-art models (**YOLO-World**, **YOLO-Face**, and **Depth Anything V2**) to detect objects, generate customizable futuristic HUDs, and export multi-layer sequences ready for professional VFX compositing.
 
